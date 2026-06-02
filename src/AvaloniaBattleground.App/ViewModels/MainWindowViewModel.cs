@@ -2,8 +2,10 @@ using AvaloniaBattleground.Core;
 using AvaloniaBattleground.Networking;
 using CommunityToolkit.Mvvm.Input;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
 
@@ -19,7 +21,9 @@ public partial class MainWindowViewModel : ViewModelBase
     private string _currentDisplayName;
     private string _currentScreenTitle = "Main Menu";
     private string _displayNameInput;
+    private bool _canStartMatch;
     private bool _hasConnectionFeedback;
+    private bool _hasSelectionFeedback;
     private string _hostAddressesDisplay = string.Empty;
     private string _hostPortDisplay = string.Empty;
     private bool _isBusy;
@@ -30,7 +34,11 @@ public partial class MainWindowViewModel : ViewModelBase
     private string _joinAddressInput = "127.0.0.1";
     private string _joinPortInput = string.Empty;
     private ILobbySession? _lobbySession;
+    private FighterRole _selectedRole = FighterRole.Melee;
+    private Team _selectedTeam = Team.Red;
+    private string _selectionFeedback = string.Empty;
     private EventHandler<LobbySnapshot>? _snapshotChangedHandler;
+    private string _startLockStatus = "Waiting for exactly four Clients.";
 
     public MainWindowViewModel()
         : this(
@@ -60,6 +68,8 @@ public partial class MainWindowViewModel : ViewModelBase
         HostMatchCommand = new AsyncRelayCommand(HostMatchAsync);
         JoinMatchCommand = new RelayCommand(ShowJoinScreen);
         JoinHostCommand = new AsyncRelayCommand(JoinHostAsync);
+        ApplySelectionCommand = new AsyncRelayCommand(ApplySelectionAsync);
+        StartMatchCommand = new RelayCommand(() => { }, () => CanStartMatch);
         BackToMainMenuCommand = new AsyncRelayCommand(ShowMainMenuAsync);
         ExitCommand = new RelayCommand(_applicationShell.Exit);
     }
@@ -112,6 +122,40 @@ public partial class MainWindowViewModel : ViewModelBase
         private set => SetProperty(ref _isBusy, value);
     }
 
+    public IReadOnlyList<Team> TeamOptions { get; } = [Team.Red, Team.Blue];
+
+    public IReadOnlyList<FighterRole> RoleOptions { get; } = [FighterRole.Melee, FighterRole.Ranged];
+
+    public Team SelectedTeam
+    {
+        get => _selectedTeam;
+        set => SetProperty(ref _selectedTeam, value);
+    }
+
+    public FighterRole SelectedRole
+    {
+        get => _selectedRole;
+        set => SetProperty(ref _selectedRole, value);
+    }
+
+    public bool CanStartMatch
+    {
+        get => _canStartMatch;
+        private set
+        {
+            if (SetProperty(ref _canStartMatch, value))
+            {
+                StartMatchCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public string StartLockStatus
+    {
+        get => _startLockStatus;
+        private set => SetProperty(ref _startLockStatus, value);
+    }
+
     public string JoinAddressInput
     {
         get => _joinAddressInput;
@@ -148,6 +192,18 @@ public partial class MainWindowViewModel : ViewModelBase
         private set => SetProperty(ref _hasConnectionFeedback, value);
     }
 
+    public string SelectionFeedback
+    {
+        get => _selectionFeedback;
+        private set => SetProperty(ref _selectionFeedback, value);
+    }
+
+    public bool HasSelectionFeedback
+    {
+        get => _hasSelectionFeedback;
+        private set => SetProperty(ref _hasSelectionFeedback, value);
+    }
+
     public ObservableCollection<LobbyClientItemViewModel> LobbyClients { get; } = [];
 
     public ICommand SaveDisplayNameCommand { get; }
@@ -157,6 +213,10 @@ public partial class MainWindowViewModel : ViewModelBase
     public ICommand JoinMatchCommand { get; }
 
     public IAsyncRelayCommand JoinHostCommand { get; }
+
+    public IAsyncRelayCommand ApplySelectionCommand { get; }
+
+    public IRelayCommand StartMatchCommand { get; }
 
     public IAsyncRelayCommand BackToMainMenuCommand { get; }
 
@@ -209,6 +269,8 @@ public partial class MainWindowViewModel : ViewModelBase
         IsHostLobby = false;
         HostAddressesDisplay = string.Empty;
         HostPortDisplay = string.Empty;
+        CanStartMatch = false;
+        StartLockStatus = "Waiting for exactly four Clients.";
         LobbyClients.Clear();
 
         CurrentScreenTitle = "Join Match";
@@ -266,6 +328,7 @@ public partial class MainWindowViewModel : ViewModelBase
         await StopLobbySessionAsync();
         ShowMainMenu();
         SetConnectionFeedback(string.Empty);
+        SetSelectionFeedback(string.Empty);
     }
 
     private void AttachLobbySession(ILobbySession lobbySession)
@@ -292,7 +355,27 @@ public partial class MainWindowViewModel : ViewModelBase
         await _lobbySession.DisposeAsync();
         _lobbySession = null;
         _snapshotChangedHandler = null;
+        CanStartMatch = false;
+        StartLockStatus = "Waiting for exactly four Clients.";
         LobbyClients.Clear();
+    }
+
+    private async Task ApplySelectionAsync()
+    {
+        if (_lobbySession is null)
+        {
+            return;
+        }
+
+        var result = await _lobbySession.SelectTeamRoleAsync(SelectedTeam, SelectedRole);
+        if (result.Succeeded)
+        {
+            SetSelectionFeedback(string.Empty);
+            UpdateLobbyClients(LobbySnapshot.FromLobbyState(result.Lobby));
+            return;
+        }
+
+        SetSelectionFeedback(result.Message);
     }
 
     private void ShowLobbyScreen()
@@ -320,6 +403,8 @@ public partial class MainWindowViewModel : ViewModelBase
         IsMainMenu = true;
         HostAddressesDisplay = string.Empty;
         HostPortDisplay = string.Empty;
+        CanStartMatch = false;
+        StartLockStatus = "Waiting for exactly four Clients.";
     }
 
     private void UpdateLobbyClients(LobbySnapshot snapshot)
@@ -328,13 +413,59 @@ public partial class MainWindowViewModel : ViewModelBase
 
         foreach (var client in snapshot.Clients)
         {
-            LobbyClients.Add(new LobbyClientItemViewModel(client.DisplayName, client.IsHost));
+            LobbyClients.Add(new LobbyClientItemViewModel(
+                client.DisplayName,
+                client.IsHost,
+                client.Team,
+                client.Role));
         }
+
+        var localClient = snapshot.Clients.SingleOrDefault(client =>
+            client.ClientId == _lobbySession?.LocalClientId);
+        if (localClient?.Team is not null)
+        {
+            SelectedTeam = localClient.Team.Value;
+        }
+
+        if (localClient?.Role is not null)
+        {
+            SelectedRole = localClient.Role.Value;
+        }
+
+        CanStartMatch = snapshot.StartEligibility.CanStart;
+        StartLockStatus = GetStartLockStatus(snapshot.StartEligibility);
     }
 
     private void SetConnectionFeedback(string message)
     {
         ConnectionFeedback = message;
         HasConnectionFeedback = !string.IsNullOrWhiteSpace(message);
+    }
+
+    private void SetSelectionFeedback(string message)
+    {
+        SelectionFeedback = message;
+        HasSelectionFeedback = !string.IsNullOrWhiteSpace(message);
+    }
+
+    private static string GetStartLockStatus(LobbyStartEligibility eligibility)
+    {
+        if (eligibility.CanStart)
+        {
+            return "Ready to start.";
+        }
+
+        if (eligibility.LockReasons.Contains(LobbyStartLockReason.FullLobbyRequirement) &&
+            eligibility.LockReasons.Contains(LobbyStartLockReason.RoleConstraint))
+        {
+            return "Waiting for exactly four Clients and valid Team roles.";
+        }
+
+        if (eligibility.LockReasons.Contains(LobbyStartLockReason.FullLobbyRequirement))
+        {
+            return "Waiting for exactly four Clients.";
+        }
+
+        return "Waiting for each Team to choose one Melee and one Ranged Fighter.";
     }
 }

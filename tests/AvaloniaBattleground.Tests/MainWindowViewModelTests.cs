@@ -208,6 +208,91 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Shell_reflects_team_role_selection_and_start_eligibility()
+    {
+        var hostSession = new FakeHostLobbySession(
+            ["127.0.0.1"],
+            5000,
+            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+        var networkService = new RecordingLobbyNetworkService
+        {
+            HostSession = hostSession,
+        };
+        var viewModel = new MainWindowViewModel(
+            new LocalProfileStore(CreateProfilePath()),
+            new RecordingApplicationShell(),
+            networkService,
+            new ImmediateViewDispatcher());
+
+        await viewModel.HostMatchCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.CanStartMatch);
+        Assert.Equal("Ready to start.", viewModel.StartLockStatus);
+        Assert.Equal(
+            [("Player 1", "Red", "Melee"), ("Player 2", "Red", "Ranged"), ("Player 3", "Blue", "Melee"), ("Player 4", "Blue", "Ranged")],
+            viewModel.LobbyClients.Select(client => (client.DisplayName, client.TeamDisplay, client.RoleDisplay)));
+    }
+
+    [Fact]
+    public async Task Shell_applies_local_team_role_selection()
+    {
+        var hostSession = new FakeHostLobbySession(
+            ["127.0.0.1"],
+            5000,
+            new LobbySnapshot([new LobbyClientInfo(1, "Host Player", true)]));
+        var networkService = new RecordingLobbyNetworkService
+        {
+            HostSession = hostSession,
+        };
+        var viewModel = new MainWindowViewModel(
+            new LocalProfileStore(CreateProfilePath()),
+            new RecordingApplicationShell(),
+            networkService,
+            new ImmediateViewDispatcher());
+
+        await viewModel.HostMatchCommand.ExecuteAsync(null);
+        viewModel.SelectedTeam = Team.Red;
+        viewModel.SelectedRole = FighterRole.Melee;
+        await viewModel.ApplySelectionCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.HasSelectionFeedback);
+        var hostClient = Assert.Single(viewModel.LobbyClients);
+        Assert.Equal("Red", hostClient.TeamDisplay);
+        Assert.Equal("Melee", hostClient.RoleDisplay);
+    }
+
+    [Fact]
+    public async Task Shell_shows_selection_conflict_feedback()
+    {
+        var clientSession = new FakeClientLobbySession(
+            new LobbySnapshot(
+            [
+                new LobbyClientInfo(1, "Host Player", true, Team.Red, FighterRole.Melee),
+                new LobbyClientInfo(2, "Joining Player", false),
+            ]));
+        var networkService = new RecordingLobbyNetworkService
+        {
+            JoinResult = JoinLobbyResult.Success(clientSession),
+        };
+        var viewModel = new MainWindowViewModel(
+            new LocalProfileStore(CreateProfilePath()),
+            new RecordingApplicationShell(),
+            networkService,
+            new ImmediateViewDispatcher());
+
+        viewModel.JoinMatchCommand.Execute(null);
+        viewModel.JoinAddressInput = "127.0.0.1";
+        viewModel.JoinPortInput = "5000";
+        await viewModel.JoinHostCommand.ExecuteAsync(null);
+        viewModel.SelectedTeam = Team.Red;
+        viewModel.SelectedRole = FighterRole.Melee;
+        await viewModel.ApplySelectionCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.HasSelectionFeedback);
+        Assert.Contains("already selected", viewModel.SelectionFeedback);
+    }
+
+    [Fact]
     public void Exit_command_requests_application_exit()
     {
         var shell = new RecordingApplicationShell();
@@ -225,6 +310,17 @@ public sealed class MainWindowViewModelTests
     private static string CreateProfilePath()
     {
         return Path.Combine(Path.GetTempPath(), Path.GetRandomFileName(), "profile.json");
+    }
+
+    private static LobbyState CreateValidLobbyState()
+    {
+        return new LobbyState(
+        [
+            new LobbyClient(1, "Player 1", true, Team.Red, FighterRole.Melee),
+            new LobbyClient(2, "Player 2", false, Team.Red, FighterRole.Ranged),
+            new LobbyClient(3, "Player 3", false, Team.Blue, FighterRole.Melee),
+            new LobbyClient(4, "Player 4", false, Team.Blue, FighterRole.Ranged),
+        ]);
     }
 
     private sealed class RecordingApplicationShell : IApplicationShell
@@ -280,7 +376,7 @@ public sealed class MainWindowViewModelTests
         IReadOnlyList<string> shareableAddresses,
         int port,
         LobbySnapshot snapshot)
-        : FakeLobbySession(snapshot), IHostLobbySession
+        : FakeLobbySession(snapshot, 1), IHostLobbySession
     {
         public IReadOnlyList<string> ShareableAddresses { get; } = shareableAddresses;
 
@@ -288,13 +384,31 @@ public sealed class MainWindowViewModelTests
     }
 
     private sealed class FakeClientLobbySession(LobbySnapshot snapshot)
-        : FakeLobbySession(snapshot), IClientLobbySession;
+        : FakeLobbySession(snapshot, 2), IClientLobbySession;
 
-    private abstract class FakeLobbySession(LobbySnapshot snapshot) : ILobbySession
+    private abstract class FakeLobbySession(LobbySnapshot snapshot, int localClientId) : ILobbySession
     {
         public event EventHandler<LobbySnapshot>? SnapshotChanged;
 
+        public int LocalClientId { get; } = localClientId;
+
         public LobbySnapshot Snapshot { get; private set; } = snapshot;
+
+        public Task<LobbySelectionResult> SelectTeamRoleAsync(
+            Team team,
+            FighterRole role,
+            CancellationToken cancellationToken = default)
+        {
+            var result = Snapshot.ToLobbyState()
+                .ApplySelection(new LobbySelection(LocalClientId, team, role));
+
+            if (result.Succeeded)
+            {
+                Publish(LobbySnapshot.FromLobbyState(result.Lobby));
+            }
+
+            return Task.FromResult(result);
+        }
 
         public ValueTask DisposeAsync()
         {
