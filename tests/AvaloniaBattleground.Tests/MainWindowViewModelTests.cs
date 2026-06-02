@@ -341,10 +341,14 @@ public sealed class MainWindowViewModelTests
         viewModel.SetMatchKeyState(MatchInputKey.MoveRight, true);
         viewModel.SetMatchKeyState(MatchInputKey.AimUp, true);
         viewModel.SetMatchKeyState(MatchInputKey.Dash, true);
+        viewModel.SetMatchKeyState(MatchInputKey.PrimaryAttack, true);
+        viewModel.SetMatchKeyState(MatchInputKey.RoleAbility, true);
 
         Assert.Equal(new GameVector(1, 0), hostSession.LastPlayerInput!.MoveDirection);
         Assert.Equal(new GameVector(0, -1), hostSession.LastPlayerInput.AimDirection);
         Assert.True(hostSession.LastPlayerInput.Dash);
+        Assert.True(hostSession.LastPlayerInput.PrimaryAttack);
+        Assert.True(hostSession.LastPlayerInput.RoleAbility);
     }
 
     [Fact]

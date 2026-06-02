@@ -11,4 +11,6 @@ public enum MatchInputKey
     AimLeft,
     AimRight,
     Dash,
+    PrimaryAttack,
+    RoleAbility,
 }

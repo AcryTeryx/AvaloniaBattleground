@@ -45,6 +45,8 @@ public partial class MainWindowViewModel : ViewModelBase
     private bool _aimRight;
     private bool _aimUp;
     private bool _dash;
+    private bool _primaryAttack;
+    private bool _roleAbility;
     private FighterRole _selectedRole = FighterRole.Melee;
     private Team _selectedTeam = Team.Red;
     private string _selectionFeedback = string.Empty;
@@ -538,6 +540,12 @@ public partial class MainWindowViewModel : ViewModelBase
             case MatchInputKey.Dash:
                 _dash = isPressed;
                 break;
+            case MatchInputKey.PrimaryAttack:
+                _primaryAttack = isPressed;
+                break;
+            case MatchInputKey.RoleAbility:
+                _roleAbility = isPressed;
+                break;
         }
 
         _ = SendCurrentInputAsync();
@@ -560,7 +568,9 @@ public partial class MainWindowViewModel : ViewModelBase
                 _aimDown,
                 _aimLeft,
                 _aimRight,
-                _dash));
+                _dash,
+                _primaryAttack,
+                _roleAbility));
     }
 
     private void SetConnectionFeedback(string message)
