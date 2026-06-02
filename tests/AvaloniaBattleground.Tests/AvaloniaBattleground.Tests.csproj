@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\AvaloniaBattleground.Core\AvaloniaBattleground.Core.csproj" />
     <ProjectReference Include="..\..\src\AvaloniaBattleground.App\AvaloniaBattleground.App.csproj" />
+    <ProjectReference Include="..\..\src\AvaloniaBattleground.Networking\AvaloniaBattleground.Networking.csproj" />
   </ItemGroup>
 
 </Project>

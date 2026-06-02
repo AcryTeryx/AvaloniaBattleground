@@ -68,6 +68,11 @@
                                 HorizontalContentAlignment="Center"/>
                     </StackPanel>
 
+                    <TextBlock Text="{Binding ConnectionFeedback}"
+                               IsVisible="{Binding HasConnectionFeedback}"
+                               Foreground="#B3261E"
+                               TextWrapping="Wrap"/>
+
                     <Button Content="Host Match"
                             Command="{Binding HostMatchCommand}"
                             MinHeight="42"
@@ -86,28 +91,107 @@
                 </StackPanel>
             </Grid>
 
-            <Grid IsVisible="{Binding IsPlaceholderScreen}">
-                <StackPanel Width="360"
+            <Grid IsVisible="{Binding IsJoinScreen}">
+                <StackPanel Width="420"
                             Spacing="16"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center">
-                    <TextBlock Text="{Binding CurrentScreenTitle}"
+                    <TextBlock Text="Join Match"
                                FontSize="24"
                                FontWeight="SemiBold"
                                HorizontalAlignment="Center"/>
-                    <TextBlock Text="Not implemented yet."
-                               HorizontalAlignment="Center"/>
-                    <StackPanel Spacing="2"
-                                HorizontalAlignment="Center">
-                        <TextBlock Text="Local Display Name"
-                                   FontSize="12"
-                                   Opacity="0.72"
-                                   HorizontalAlignment="Center"/>
-                        <TextBlock Text="{Binding CurrentDisplayName}"
-                                   FontSize="18"
-                                   FontWeight="SemiBold"
-                                   HorizontalAlignment="Center"/>
+
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Host IP Address"/>
+                        <TextBox Text="{Binding JoinAddressInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 MinHeight="42"
+                                 PlaceholderText="127.0.0.1"/>
                     </StackPanel>
+
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Port"/>
+                        <TextBox Text="{Binding JoinPortInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 MinHeight="42"
+                                 PlaceholderText="5000"/>
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding ConnectionFeedback}"
+                               IsVisible="{Binding HasConnectionFeedback}"
+                               Foreground="#B3261E"
+                               TextWrapping="Wrap"/>
+
+                    <Button Content="Connect"
+                            Command="{Binding JoinHostCommand}"
+                            MinHeight="42"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"/>
+                    <Button Content="Back"
+                            Command="{Binding BackToMainMenuCommand}"
+                            MinHeight="42"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+
+            <Grid IsVisible="{Binding IsLobbyScreen}">
+                <StackPanel Width="520"
+                            Spacing="18"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                    <TextBlock Text="Lobby"
+                               FontSize="24"
+                               FontWeight="SemiBold"
+                               HorizontalAlignment="Center"/>
+
+                    <Border IsVisible="{Binding IsHostLobby}"
+                            BorderBrush="#55818A96"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="16">
+                        <Grid RowDefinitions="Auto,Auto"
+                              ColumnDefinitions="Auto,*"
+                              RowSpacing="8"
+                              ColumnSpacing="16">
+                            <TextBlock Text="Address"
+                                       Opacity="0.72"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding HostAddressesDisplay}"
+                                       TextWrapping="Wrap"/>
+                            <TextBlock Grid.Row="1"
+                                       Text="Port"
+                                       Opacity="0.72"/>
+                            <TextBlock Grid.Row="1"
+                                       Grid.Column="1"
+                                       Text="{Binding HostPortDisplay}"/>
+                        </Grid>
+                    </Border>
+
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Connected Clients"
+                                   FontWeight="SemiBold"/>
+                        <ItemsControl ItemsSource="{Binding LobbyClients}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:LobbyClientItemViewModel">
+                                    <Border BorderBrush="#33818A96"
+                                            BorderThickness="1"
+                                            CornerRadius="6"
+                                            Padding="12"
+                                            Margin="0,0,0,8">
+                                        <Grid ColumnDefinitions="*,Auto"
+                                              ColumnSpacing="12">
+                                            <TextBlock Text="{Binding DisplayName}"
+                                                       FontSize="16"/>
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding HostMarker}"
+                                                       IsVisible="{Binding IsHost}"
+                                                       Opacity="0.72"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
                     <Button Content="Back"
                             Command="{Binding BackToMainMenuCommand}"
                             MinHeight="42"
