@@ -293,6 +293,61 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Shell_starts_match_from_valid_host_lobby()
+    {
+        var hostSession = new FakeHostLobbySession(
+            ["127.0.0.1"],
+            5000,
+            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+        var networkService = new RecordingLobbyNetworkService
+        {
+            HostSession = hostSession,
+        };
+        var viewModel = new MainWindowViewModel(
+            new LocalProfileStore(CreateProfilePath()),
+            new RecordingApplicationShell(),
+            networkService,
+            new ImmediateViewDispatcher());
+
+        await viewModel.HostMatchCommand.ExecuteAsync(null);
+        await viewModel.StartMatchCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.IsMatchScreen);
+        Assert.False(viewModel.IsLobbyScreen);
+        Assert.Equal("Match", viewModel.CurrentScreenTitle);
+        Assert.NotNull(viewModel.MatchSnapshot);
+        Assert.Equal(4, viewModel.MatchSnapshot.Fighters.Count);
+    }
+
+    [Fact]
+    public async Task Shell_sends_keyboard_only_input_during_match()
+    {
+        var hostSession = new FakeHostLobbySession(
+            ["127.0.0.1"],
+            5000,
+            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+        var networkService = new RecordingLobbyNetworkService
+        {
+            HostSession = hostSession,
+        };
+        var viewModel = new MainWindowViewModel(
+            new LocalProfileStore(CreateProfilePath()),
+            new RecordingApplicationShell(),
+            networkService,
+            new ImmediateViewDispatcher());
+
+        await viewModel.HostMatchCommand.ExecuteAsync(null);
+        await viewModel.StartMatchCommand.ExecuteAsync(null);
+        viewModel.SetMatchKeyState(MatchInputKey.MoveRight, true);
+        viewModel.SetMatchKeyState(MatchInputKey.AimUp, true);
+        viewModel.SetMatchKeyState(MatchInputKey.Dash, true);
+
+        Assert.Equal(new GameVector(1, 0), hostSession.LastPlayerInput!.MoveDirection);
+        Assert.Equal(new GameVector(0, -1), hostSession.LastPlayerInput.AimDirection);
+        Assert.True(hostSession.LastPlayerInput.Dash);
+    }
+
+    [Fact]
     public void Exit_command_requests_application_exit()
     {
         var shell = new RecordingApplicationShell();
@@ -381,6 +436,21 @@ public sealed class MainWindowViewModelTests
         public IReadOnlyList<string> ShareableAddresses { get; } = shareableAddresses;
 
         public int Port { get; } = port;
+
+        public Task<StartMatchResult> StartMatchAsync(CancellationToken cancellationToken = default)
+        {
+            if (!Snapshot.StartEligibility.CanStart)
+            {
+                return Task.FromResult(StartMatchResult.Failure(
+                    StartMatchFailureReason.LobbyNotReady,
+                    "The Lobby must have exactly four Clients and valid Team roles."));
+            }
+
+            var simulation = MatchSimulation.Start(Snapshot.ToLobbyState());
+            PublishMatchSnapshot(simulation.Snapshot);
+
+            return Task.FromResult(StartMatchResult.Success(simulation.Snapshot));
+        }
     }
 
     private sealed class FakeClientLobbySession(LobbySnapshot snapshot)
@@ -390,9 +460,15 @@ public sealed class MainWindowViewModelTests
     {
         public event EventHandler<LobbySnapshot>? SnapshotChanged;
 
+        public event EventHandler<MatchSnapshot>? MatchSnapshotChanged;
+
         public int LocalClientId { get; } = localClientId;
 
         public LobbySnapshot Snapshot { get; private set; } = snapshot;
+
+        public MatchSnapshot? MatchSnapshot { get; private set; }
+
+        public PlayerInput? LastPlayerInput { get; private set; }
 
         public Task<LobbySelectionResult> SelectTeamRoleAsync(
             Team team,
@@ -415,10 +491,24 @@ public sealed class MainWindowViewModelTests
             return ValueTask.CompletedTask;
         }
 
+        public Task SendPlayerInputAsync(
+            PlayerInput input,
+            CancellationToken cancellationToken = default)
+        {
+            LastPlayerInput = input;
+            return Task.CompletedTask;
+        }
+
         public void Publish(LobbySnapshot snapshot)
         {
             Snapshot = snapshot;
             SnapshotChanged?.Invoke(this, snapshot);
+        }
+
+        public void PublishMatchSnapshot(MatchSnapshot snapshot)
+        {
+            MatchSnapshot = snapshot;
+            MatchSnapshotChanged?.Invoke(this, snapshot);
         }
     }
 
