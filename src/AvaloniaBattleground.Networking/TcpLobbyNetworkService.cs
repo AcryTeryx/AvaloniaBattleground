@@ -209,6 +209,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
         private readonly List<ConnectedClient> _connectedClients = [];
         private readonly TcpListener _listener;
         private readonly object _syncRoot = new();
+        private MatchSimulation? _matchSimulation;
         private int _nextClientId = 2;
         private LobbyState _lobby;
 
@@ -228,6 +229,8 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
 
         public event EventHandler<LobbySnapshot>? SnapshotChanged;
 
+        public event EventHandler<MatchSnapshot>? MatchSnapshotChanged;
+
         public IReadOnlyList<string> ShareableAddresses { get; }
 
         public int Port { get; }
@@ -243,6 +246,48 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                     return LobbySnapshot.FromLobbyState(_lobby);
                 }
             }
+        }
+
+        public MatchSnapshot? MatchSnapshot
+        {
+            get
+            {
+                lock (_syncRoot)
+                {
+                    return _matchSimulation?.Snapshot;
+                }
+            }
+        }
+
+        public async Task<StartMatchResult> StartMatchAsync(CancellationToken cancellationToken = default)
+        {
+            MatchSnapshot snapshot;
+
+            lock (_syncRoot)
+            {
+                if (_matchSimulation is not null)
+                {
+                    return StartMatchResult.Failure(
+                        StartMatchFailureReason.AlreadyStarted,
+                        "The Match has already started.");
+                }
+
+                if (!_lobby.StartEligibility.CanStart)
+                {
+                    return StartMatchResult.Failure(
+                        StartMatchFailureReason.LobbyNotReady,
+                        "The Lobby must have exactly four Clients and valid Team roles.");
+                }
+
+                _matchSimulation = MatchSimulation.Start(_lobby);
+                snapshot = _matchSimulation.Snapshot;
+            }
+
+            MatchSnapshotChanged?.Invoke(this, snapshot);
+            await BroadcastMatchSnapshotAsync(snapshot, cancellationToken);
+            _ = RunMatchLoopAsync();
+
+            return StartMatchResult.Success(snapshot);
         }
 
         public async Task<LobbySelectionResult> SelectTeamRoleAsync(
@@ -366,6 +411,13 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                     if (message is null)
                     {
                         return;
+                }
+
+                    if (message.MessageType == WireMessageTypes.PlayerInput &&
+                        message.PlayerInput is not null)
+                    {
+                        SetPlayerInput(clientId, message.PlayerInput);
+                        continue;
                     }
 
                     if (message.MessageType != WireMessageTypes.SelectionRequest ||
@@ -413,6 +465,59 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                     return;
                 }
                 catch (ObjectDisposedException)
+                {
+                    return;
+                }
+            }
+        }
+
+        public Task SendPlayerInputAsync(
+            PlayerInput input,
+            CancellationToken cancellationToken = default)
+        {
+            SetPlayerInput(LocalClientId, input);
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
+
+        private void SetPlayerInput(int clientId, PlayerInput input)
+        {
+            lock (_syncRoot)
+            {
+                _matchSimulation?.SetInput(clientId, input);
+            }
+        }
+
+        private async Task RunMatchLoopAsync()
+        {
+            using var timer = new PeriodicTimer(
+                TimeSpan.FromSeconds(MatchRules.FixedDeltaSeconds));
+
+            while (!_stopping.IsCancellationRequested)
+            {
+                try
+                {
+                    if (!await timer.WaitForNextTickAsync(_stopping.Token))
+                    {
+                        return;
+                    }
+
+                    MatchSnapshot? snapshot;
+                    lock (_syncRoot)
+                    {
+                        _matchSimulation?.Tick();
+                        snapshot = _matchSimulation?.Snapshot;
+                    }
+
+                    if (snapshot is null)
+                    {
+                        return;
+                    }
+
+                    MatchSnapshotChanged?.Invoke(this, snapshot);
+                    await BroadcastMatchSnapshotAsync(snapshot, _stopping.Token);
+                }
+                catch (OperationCanceledException)
                 {
                     return;
                 }
@@ -496,6 +601,40 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 }
             }
         }
+
+        private async Task BroadcastMatchSnapshotAsync(
+            MatchSnapshot snapshot,
+            CancellationToken cancellationToken)
+        {
+            ConnectedClient[] connectedClients;
+            lock (_syncRoot)
+            {
+                connectedClients = [.. _connectedClients];
+            }
+
+            foreach (var connectedClient in connectedClients)
+            {
+                try
+                {
+                    await WriteWireMessageAsync(
+                        connectedClient.TcpClient.GetStream(),
+                        WireMessage.MatchSnapshotMessage(snapshot),
+                        cancellationToken);
+                }
+                catch (IOException)
+                {
+                    // Disconnect outcome handling belongs to a later issue.
+                }
+                catch (SocketException)
+                {
+                    // Disconnect outcome handling belongs to a later issue.
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Disconnect outcome handling belongs to a later issue.
+                }
+            }
+        }
     }
 
     private sealed class ClientLobbySession : IClientLobbySession
@@ -504,6 +643,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
         private readonly ConcurrentDictionary<Guid, TaskCompletionSource<LobbySelectionResult>> _pendingSelections = new();
         private readonly TcpClient _tcpClient;
         private readonly SemaphoreSlim _writeLock = new(1, 1);
+        private MatchSnapshot? _matchSnapshot;
         private LobbySnapshot _snapshot;
 
         public ClientLobbySession(TcpClient tcpClient, int localClientId, LobbySnapshot initialSnapshot)
@@ -517,9 +657,13 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
 
         public event EventHandler<LobbySnapshot>? SnapshotChanged;
 
+        public event EventHandler<MatchSnapshot>? MatchSnapshotChanged;
+
         public int LocalClientId { get; }
 
         public LobbySnapshot Snapshot => _snapshot;
+
+        public MatchSnapshot? MatchSnapshot => _matchSnapshot;
 
         public async Task<LobbySelectionResult> SelectTeamRoleAsync(
             Team team,
@@ -569,6 +713,24 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             _stopping.Dispose();
         }
 
+        public async Task SendPlayerInputAsync(
+            PlayerInput input,
+            CancellationToken cancellationToken = default)
+        {
+            await _writeLock.WaitAsync(cancellationToken);
+            try
+            {
+                    await WriteWireMessageAsync(
+                        _tcpClient.GetStream(),
+                        WireMessage.PlayerInputMessage(input),
+                        cancellationToken);
+            }
+            finally
+            {
+                _writeLock.Release();
+            }
+        }
+
         private async Task ReadSnapshotsAsync()
         {
             while (!_stopping.IsCancellationRequested)
@@ -588,6 +750,13 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                         message.Clients is not null)
                     {
                         UpdateSnapshot(new LobbySnapshot(message.Clients));
+                        continue;
+                    }
+
+                    if (message.MessageType == WireMessageTypes.MatchSnapshot &&
+                        message.MatchSnapshot is not null)
+                    {
+                        UpdateMatchSnapshot(message.MatchSnapshot);
                         continue;
                     }
 
@@ -646,6 +815,12 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 completion.TrySetResult(result);
             }
         }
+
+        private void UpdateMatchSnapshot(MatchSnapshot snapshot)
+        {
+            _matchSnapshot = snapshot;
+            MatchSnapshotChanged?.Invoke(this, snapshot);
+        }
     }
 
     private sealed record ConnectedClient(int ClientId, TcpClient TcpClient);
@@ -656,6 +831,8 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
         public const string JoinRejected = nameof(JoinRejected);
         public const string JoinRequest = nameof(JoinRequest);
         public const string LobbySnapshot = nameof(LobbySnapshot);
+        public const string MatchSnapshot = nameof(MatchSnapshot);
+        public const string PlayerInput = nameof(PlayerInput);
         public const string SelectionAccepted = nameof(SelectionAccepted);
         public const string SelectionRejected = nameof(SelectionRejected);
         public const string SelectionRequest = nameof(SelectionRequest);
@@ -671,6 +848,8 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
         string? FailureMessage = null,
         Team? Team = null,
         FighterRole? Role = null,
+        PlayerInput? PlayerInput = null,
+        MatchSnapshot? MatchSnapshot = null,
         IReadOnlyList<LobbyClientInfo>? Clients = null)
     {
         public static WireMessage JoinRequest(int protocolVersion, string displayName)
@@ -743,6 +922,22 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 RequestId: requestId,
                 FailureReason: failureReason.ToString(),
                 FailureMessage: failureMessage);
+        }
+
+        public static WireMessage PlayerInputMessage(PlayerInput playerInput)
+        {
+            return new WireMessage(
+                WireMessageTypes.PlayerInput,
+                LobbyProtocol.CurrentVersion,
+                PlayerInput: playerInput);
+        }
+
+        public static WireMessage MatchSnapshotMessage(MatchSnapshot matchSnapshot)
+        {
+            return new WireMessage(
+                WireMessageTypes.MatchSnapshot,
+                LobbyProtocol.CurrentVersion,
+                MatchSnapshot: matchSnapshot);
         }
     }
 

@@ -128,6 +128,53 @@ public sealed class TcpLobbyNetworkServiceTests
         Assert.Null(client.Snapshot.Clients.Single(lobbyClient => lobbyClient.DisplayName == "Joining Player").Role);
     }
 
+    [Fact]
+    public async Task Valid_lobby_start_transitions_all_connected_clients_to_match_snapshot()
+    {
+        var (host, clients) = await CreateValidFourClientLobbyAsync();
+        try
+        {
+            var startResult = await host.StartMatchAsync();
+
+            Assert.True(startResult.Succeeded, startResult.Message);
+            Assert.Equal(4, startResult.MatchSnapshot!.Fighters.Count);
+            Assert.Equal(4, (await WaitForMatchSnapshotAsync(host)).Fighters.Count);
+
+            foreach (var client in clients)
+            {
+                Assert.Equal(4, (await WaitForMatchSnapshotAsync(client)).Fighters.Count);
+            }
+        }
+        finally
+        {
+            await DisposeSessionsAsync(host, clients);
+        }
+    }
+
+    [Fact]
+    public async Task Client_input_moves_fighter_through_host_authoritative_snapshot()
+    {
+        var (host, clients) = await CreateValidFourClientLobbyAsync();
+        try
+        {
+            await host.StartMatchAsync();
+            var firstClient = clients[0];
+            var initialSnapshot = await WaitForMatchSnapshotAsync(firstClient);
+            var startPosition = initialSnapshot.Fighters.Single(fighter => fighter.ClientId == firstClient.LocalClientId).Position;
+
+            await firstClient.SendPlayerInputAsync(new PlayerInput(new GameVector(1, 0), new GameVector(1, 0), false));
+            var movedSnapshot = await WaitForMatchSnapshotAsync(
+                firstClient,
+                snapshot => snapshot.Fighters.Single(fighter => fighter.ClientId == firstClient.LocalClientId).Position.X > startPosition.X);
+
+            Assert.True(movedSnapshot.Fighters.Single(fighter => fighter.ClientId == firstClient.LocalClientId).Position.X > startPosition.X);
+        }
+        finally
+        {
+            await DisposeSessionsAsync(host, clients);
+        }
+    }
+
     [Theory]
     [InlineData("not an address", 5000, JoinFailureReason.InvalidAddress)]
     [InlineData("127.0.0.1", 0, JoinFailureReason.InvalidPort)]
@@ -180,6 +227,80 @@ public sealed class TcpLobbyNetworkServiceTests
         {
             session.SnapshotChanged -= HandleSnapshotChanged;
         }
+    }
+
+    private static async Task<MatchSnapshot> WaitForMatchSnapshotAsync(
+        ILobbySession session,
+        Predicate<MatchSnapshot>? predicate = null)
+    {
+        predicate ??= _ => true;
+
+        if (session.MatchSnapshot is not null && predicate(session.MatchSnapshot))
+        {
+            return session.MatchSnapshot;
+        }
+
+        var completion = new TaskCompletionSource<MatchSnapshot>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void HandleMatchSnapshotChanged(object? sender, MatchSnapshot snapshot)
+        {
+            if (predicate(snapshot))
+            {
+                completion.TrySetResult(snapshot);
+            }
+        }
+
+        session.MatchSnapshotChanged += HandleMatchSnapshotChanged;
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        using var registration = timeout.Token.Register(
+            () => completion.TrySetCanceled(timeout.Token));
+
+        try
+        {
+            return await completion.Task;
+        }
+        finally
+        {
+            session.MatchSnapshotChanged -= HandleMatchSnapshotChanged;
+        }
+    }
+
+    private static async Task<(IHostLobbySession Host, IClientLobbySession[] Clients)> CreateValidFourClientLobbyAsync()
+    {
+        var networkService = new TcpLobbyNetworkService();
+        var host = await networkService.StartHostAsync("Player 1");
+        var clients = new List<IClientLobbySession>();
+
+        for (var index = 2; index <= 4; index++)
+        {
+            var joinResult = await networkService.JoinAsync(
+                new JoinLobbyRequest("127.0.0.1", host.Port, $"Player {index}"));
+            Assert.True(joinResult.Succeeded, joinResult.FailureMessage);
+            clients.Add(joinResult.Session!);
+        }
+
+        await host.SelectTeamRoleAsync(Team.Red, FighterRole.Melee);
+        await clients[0].SelectTeamRoleAsync(Team.Red, FighterRole.Ranged);
+        await clients[1].SelectTeamRoleAsync(Team.Blue, FighterRole.Melee);
+        await clients[2].SelectTeamRoleAsync(Team.Blue, FighterRole.Ranged);
+
+        await WaitForSnapshotAsync(host, snapshot => snapshot.StartEligibility.CanStart);
+
+        return (host, clients.ToArray());
+    }
+
+    private static async Task DisposeSessionsAsync(
+        IHostLobbySession host,
+        IReadOnlyList<IClientLobbySession> clients)
+    {
+        foreach (var client in clients)
+        {
+            await client.DisposeAsync();
+        }
+
+        await host.DisposeAsync();
     }
 
     private static int GetUnusedTcpPort()

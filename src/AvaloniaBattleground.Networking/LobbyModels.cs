@@ -68,6 +68,13 @@ public enum JoinFailureReason
     ProtocolVersionMismatch,
 }
 
+public enum StartMatchFailureReason
+{
+    HostOnly,
+    LobbyNotReady,
+    AlreadyStarted,
+}
+
 public sealed record JoinLobbyResult(
     IClientLobbySession? Session,
     JoinFailureReason? FailureReason,
@@ -86,17 +93,43 @@ public sealed record JoinLobbyResult(
     }
 }
 
+public sealed record StartMatchResult(
+    MatchSnapshot? MatchSnapshot,
+    StartMatchFailureReason? FailureReason,
+    string Message)
+{
+    public bool Succeeded => MatchSnapshot is not null;
+
+    public static StartMatchResult Success(MatchSnapshot matchSnapshot)
+    {
+        return new StartMatchResult(matchSnapshot, null, string.Empty);
+    }
+
+    public static StartMatchResult Failure(StartMatchFailureReason reason, string message)
+    {
+        return new StartMatchResult(null, reason, message);
+    }
+}
+
 public interface ILobbySession : IAsyncDisposable
 {
     event EventHandler<LobbySnapshot>? SnapshotChanged;
+
+    event EventHandler<MatchSnapshot>? MatchSnapshotChanged;
 
     int LocalClientId { get; }
 
     LobbySnapshot Snapshot { get; }
 
+    MatchSnapshot? MatchSnapshot { get; }
+
     Task<LobbySelectionResult> SelectTeamRoleAsync(
         Team team,
         FighterRole role,
+        CancellationToken cancellationToken = default);
+
+    Task SendPlayerInputAsync(
+        PlayerInput input,
         CancellationToken cancellationToken = default);
 }
 
@@ -105,6 +138,8 @@ public interface IHostLobbySession : ILobbySession
     IReadOnlyList<string> ShareableAddresses { get; }
 
     int Port { get; }
+
+    Task<StartMatchResult> StartMatchAsync(CancellationToken cancellationToken = default);
 }
 
 public interface IClientLobbySession : ILobbySession

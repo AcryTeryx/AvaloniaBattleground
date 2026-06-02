@@ -31,12 +31,24 @@ public partial class MainWindowViewModel : ViewModelBase
     private bool _isJoinScreen;
     private bool _isLobbyScreen;
     private bool _isMainMenu = true;
+    private bool _isMatchScreen;
     private string _joinAddressInput = "127.0.0.1";
     private string _joinPortInput = string.Empty;
     private ILobbySession? _lobbySession;
+    private MatchSnapshot? _matchSnapshot;
+    private bool _moveDown;
+    private bool _moveLeft;
+    private bool _moveRight;
+    private bool _moveUp;
+    private bool _aimDown;
+    private bool _aimLeft;
+    private bool _aimRight;
+    private bool _aimUp;
+    private bool _dash;
     private FighterRole _selectedRole = FighterRole.Melee;
     private Team _selectedTeam = Team.Red;
     private string _selectionFeedback = string.Empty;
+    private EventHandler<MatchSnapshot>? _matchSnapshotChangedHandler;
     private EventHandler<LobbySnapshot>? _snapshotChangedHandler;
     private string _startLockStatus = "Waiting for exactly four Clients.";
 
@@ -69,7 +81,7 @@ public partial class MainWindowViewModel : ViewModelBase
         JoinMatchCommand = new RelayCommand(ShowJoinScreen);
         JoinHostCommand = new AsyncRelayCommand(JoinHostAsync);
         ApplySelectionCommand = new AsyncRelayCommand(ApplySelectionAsync);
-        StartMatchCommand = new RelayCommand(() => { }, () => CanStartMatch);
+        StartMatchCommand = new AsyncRelayCommand(StartMatchAsync, () => CanStartMatch);
         BackToMainMenuCommand = new AsyncRelayCommand(ShowMainMenuAsync);
         ExitCommand = new RelayCommand(_applicationShell.Exit);
     }
@@ -108,6 +120,12 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         get => _isLobbyScreen;
         private set => SetProperty(ref _isLobbyScreen, value);
+    }
+
+    public bool IsMatchScreen
+    {
+        get => _isMatchScreen;
+        private set => SetProperty(ref _isMatchScreen, value);
     }
 
     public bool IsHostLobby
@@ -154,6 +172,12 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         get => _startLockStatus;
         private set => SetProperty(ref _startLockStatus, value);
+    }
+
+    public MatchSnapshot? MatchSnapshot
+    {
+        get => _matchSnapshot;
+        private set => SetProperty(ref _matchSnapshot, value);
     }
 
     public string JoinAddressInput
@@ -216,7 +240,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public IAsyncRelayCommand ApplySelectionCommand { get; }
 
-    public IRelayCommand StartMatchCommand { get; }
+    public IAsyncRelayCommand StartMatchCommand { get; }
 
     public IAsyncRelayCommand BackToMainMenuCommand { get; }
 
@@ -276,6 +300,7 @@ public partial class MainWindowViewModel : ViewModelBase
         CurrentScreenTitle = "Join Match";
         IsMainMenu = false;
         IsLobbyScreen = false;
+        IsMatchScreen = false;
         IsJoinScreen = true;
     }
 
@@ -336,8 +361,16 @@ public partial class MainWindowViewModel : ViewModelBase
         _lobbySession = lobbySession;
         _snapshotChangedHandler = (_, snapshot) =>
             _viewDispatcher.Post(() => UpdateLobbyClients(snapshot));
+        _matchSnapshotChangedHandler = (_, snapshot) =>
+            _viewDispatcher.Post(() => ShowMatchSnapshot(snapshot));
         _lobbySession.SnapshotChanged += _snapshotChangedHandler;
+        _lobbySession.MatchSnapshotChanged += _matchSnapshotChangedHandler;
         UpdateLobbyClients(_lobbySession.Snapshot);
+
+        if (_lobbySession.MatchSnapshot is not null)
+        {
+            ShowMatchSnapshot(_lobbySession.MatchSnapshot);
+        }
     }
 
     private async Task StopLobbySessionAsync()
@@ -352,9 +385,16 @@ public partial class MainWindowViewModel : ViewModelBase
             _lobbySession.SnapshotChanged -= _snapshotChangedHandler;
         }
 
+        if (_matchSnapshotChangedHandler is not null)
+        {
+            _lobbySession.MatchSnapshotChanged -= _matchSnapshotChangedHandler;
+        }
+
         await _lobbySession.DisposeAsync();
         _lobbySession = null;
         _snapshotChangedHandler = null;
+        _matchSnapshotChangedHandler = null;
+        MatchSnapshot = null;
         CanStartMatch = false;
         StartLockStatus = "Waiting for exactly four Clients.";
         LobbyClients.Clear();
@@ -378,11 +418,30 @@ public partial class MainWindowViewModel : ViewModelBase
         SetSelectionFeedback(result.Message);
     }
 
+    private async Task StartMatchAsync()
+    {
+        if (_lobbySession is not IHostLobbySession hostLobbySession)
+        {
+            return;
+        }
+
+        var result = await hostLobbySession.StartMatchAsync();
+        if (!result.Succeeded)
+        {
+            SetSelectionFeedback(result.Message);
+            return;
+        }
+
+        SetSelectionFeedback(string.Empty);
+        ShowMatchSnapshot(result.MatchSnapshot!);
+    }
+
     private void ShowLobbyScreen()
     {
         CurrentScreenTitle = "Lobby";
         IsMainMenu = false;
         IsJoinScreen = false;
+        IsMatchScreen = false;
         IsLobbyScreen = true;
     }
 
@@ -391,6 +450,7 @@ public partial class MainWindowViewModel : ViewModelBase
         CurrentScreenTitle = "Join Match";
         IsMainMenu = false;
         IsLobbyScreen = false;
+        IsMatchScreen = false;
         IsJoinScreen = true;
     }
 
@@ -399,6 +459,7 @@ public partial class MainWindowViewModel : ViewModelBase
         CurrentScreenTitle = "Main Menu";
         IsJoinScreen = false;
         IsLobbyScreen = false;
+        IsMatchScreen = false;
         IsHostLobby = false;
         IsMainMenu = true;
         HostAddressesDisplay = string.Empty;
@@ -434,6 +495,72 @@ public partial class MainWindowViewModel : ViewModelBase
 
         CanStartMatch = snapshot.StartEligibility.CanStart;
         StartLockStatus = GetStartLockStatus(snapshot.StartEligibility);
+    }
+
+    private void ShowMatchSnapshot(MatchSnapshot snapshot)
+    {
+        MatchSnapshot = snapshot;
+        CurrentScreenTitle = "Match";
+        IsMainMenu = false;
+        IsJoinScreen = false;
+        IsLobbyScreen = false;
+        IsMatchScreen = true;
+    }
+
+    public void SetMatchKeyState(MatchInputKey key, bool isPressed)
+    {
+        switch (key)
+        {
+            case MatchInputKey.MoveUp:
+                _moveUp = isPressed;
+                break;
+            case MatchInputKey.MoveDown:
+                _moveDown = isPressed;
+                break;
+            case MatchInputKey.MoveLeft:
+                _moveLeft = isPressed;
+                break;
+            case MatchInputKey.MoveRight:
+                _moveRight = isPressed;
+                break;
+            case MatchInputKey.AimUp:
+                _aimUp = isPressed;
+                break;
+            case MatchInputKey.AimDown:
+                _aimDown = isPressed;
+                break;
+            case MatchInputKey.AimLeft:
+                _aimLeft = isPressed;
+                break;
+            case MatchInputKey.AimRight:
+                _aimRight = isPressed;
+                break;
+            case MatchInputKey.Dash:
+                _dash = isPressed;
+                break;
+        }
+
+        _ = SendCurrentInputAsync();
+    }
+
+    private async Task SendCurrentInputAsync()
+    {
+        if (!IsMatchScreen || _lobbySession is null)
+        {
+            return;
+        }
+
+        await _lobbySession.SendPlayerInputAsync(
+            KeyboardInputMapper.Map(
+                _moveUp,
+                _moveDown,
+                _moveLeft,
+                _moveRight,
+                _aimUp,
+                _aimDown,
+                _aimLeft,
+                _aimRight,
+                _dash));
     }
 
     private void SetConnectionFeedback(string message)
