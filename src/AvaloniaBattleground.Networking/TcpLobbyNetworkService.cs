@@ -192,11 +192,10 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
 
             if (buffer[0] == '\n')
             {
-                messageBuffer.Position = 0;
-                return await JsonSerializer.DeserializeAsync<WireMessage>(
-                    messageBuffer,
-                    JsonOptions,
-                    cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                return JsonSerializer.Deserialize<WireMessage>(
+                    messageBuffer.ToArray(),
+                    JsonOptions);
             }
 
             messageBuffer.WriteByte(buffer[0]);

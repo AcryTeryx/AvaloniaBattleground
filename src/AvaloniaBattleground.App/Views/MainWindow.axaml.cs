@@ -48,10 +48,13 @@ public partial class MainWindow : Window
             Key.Left => MatchInputKey.AimLeft,
             Key.Right => MatchInputKey.AimRight,
             Key.LeftShift => MatchInputKey.Dash,
+            Key.Space => MatchInputKey.PrimaryAttack,
+            Key.LeftCtrl => MatchInputKey.RoleAbility,
             _ => default,
         };
 
         return key is Key.W or Key.S or Key.A or Key.D or
-            Key.Up or Key.Down or Key.Left or Key.Right or Key.LeftShift;
+            Key.Up or Key.Down or Key.Left or Key.Right or
+            Key.LeftShift or Key.Space or Key.LeftCtrl;
     }
 }

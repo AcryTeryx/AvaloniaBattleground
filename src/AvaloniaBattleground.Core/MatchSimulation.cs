@@ -1,10 +1,23 @@
+using System.Text.Json.Serialization;
+
 namespace AvaloniaBattleground.Core;
 
 public readonly record struct GameVector(double X, double Y)
 {
+    [JsonIgnore]
     public double Length => Math.Sqrt((X * X) + (Y * Y));
 
     public static GameVector Zero { get; } = new(0, 0);
+
+    public double Dot(GameVector other)
+    {
+        return (X * other.X) + (Y * other.Y);
+    }
+
+    public double DistanceTo(GameVector other)
+    {
+        return (this - other).Length;
+    }
 
     public GameVector NormalizeOrZero()
     {
@@ -19,6 +32,11 @@ public readonly record struct GameVector(double X, double Y)
         return new GameVector(left.X + right.X, left.Y + right.Y);
     }
 
+    public static GameVector operator -(GameVector left, GameVector right)
+    {
+        return new GameVector(left.X - right.X, left.Y - right.Y);
+    }
+
     public static GameVector operator *(GameVector vector, double scale)
     {
         return new GameVector(vector.X * scale, vector.Y * scale);
@@ -31,14 +49,50 @@ public static class MatchRules
     public const double FixedDeltaSeconds = 1.0 / FixedTickRate;
     public const double ArenaRadius = 240;
     public const double FighterMoveSpeed = 120;
+    public const int MeleeFighterHealth = 200;
+    public const int RangedFighterHealth = 100;
+    public const double MeleeFighterRadius = 12;
+    public const double RangedFighterRadius = 10;
     public const double UniversalDashCooldownSeconds = 2.5;
     public const double UniversalDashDistance = 36;
+    public const int MeleeFrontalStrikeDamage = 18;
+    public const double MeleeFrontalStrikeCooldownSeconds = 0.45;
+    public const double MeleeFrontalStrikeRange = 44;
+    public const double MeleeFrontalStrikeHalfAngleDegrees = 45;
+    public const int MeleeAreaSlashDamage = 35;
+    public const double MeleeAreaSlashCooldownSeconds = 5;
+    public const double MeleeAreaSlashRadius = 52;
+    public const int RangedSingleArrowShotDamage = 14;
+    public const double RangedSingleArrowShotCooldownSeconds = 0.6;
+    public const int RangedConeVolleyDamage = 24;
+    public const double RangedConeVolleyCooldownSeconds = 6;
+    public const int RangedConeVolleyArrowCount = 5;
+    public const double RangedConeVolleySpreadDegrees = 60;
+    public const double ProjectileSpeed = 300;
+    public const double ProjectileRadius = 4;
+    public const double CombatEffectLifetimeSeconds = 0.18;
+
+    public static int GetStartingHealth(FighterRole role)
+    {
+        return role == FighterRole.Melee
+            ? MeleeFighterHealth
+            : RangedFighterHealth;
+    }
+
+    public static double GetFighterRadius(FighterRole role)
+    {
+        return role == FighterRole.Melee
+            ? MeleeFighterRadius
+            : RangedFighterRadius;
+    }
 }
 
 public sealed record PlayerInput(
     GameVector MoveDirection,
     GameVector AimDirection,
-    bool Dash);
+    bool Dash,
+    bool PrimaryAttack = false,
+    bool RoleAbility = false);
 
 public static class KeyboardInputMapper
 {
@@ -51,7 +105,9 @@ public static class KeyboardInputMapper
         bool aimDown,
         bool aimLeft,
         bool aimRight,
-        bool dash)
+        bool dash,
+        bool primaryAttack = false,
+        bool roleAbility = false)
     {
         var move = new GameVector(
             BoolToAxis(moveRight, moveLeft),
@@ -60,7 +116,7 @@ public static class KeyboardInputMapper
             BoolToAxis(aimRight, aimLeft),
             BoolToAxis(aimDown, aimUp)).NormalizeOrZero();
 
-        return new PlayerInput(move, aim, dash);
+        return new PlayerInput(move, aim, dash, primaryAttack, roleAbility);
     }
 
     private static int BoolToAxis(bool positive, bool negative)
@@ -71,6 +127,22 @@ public static class KeyboardInputMapper
     }
 }
 
+public enum ProjectileKind
+{
+    RangedSingleArrowShot,
+    RangedConeVolleyArrow,
+}
+
+public enum CombatEffectKind
+{
+    MeleeFrontalStrike,
+    MeleeAreaSlash,
+    RangedSingleArrowShot,
+    RangedConeVolley,
+    Hit,
+    Death,
+}
+
 public sealed record FighterState(
     int ClientId,
     string DisplayName,
@@ -78,13 +150,54 @@ public sealed record FighterState(
     FighterRole Role,
     GameVector Position,
     GameVector AimDirection,
-    double DashCooldownSeconds);
+    int Health,
+    double DashCooldownSeconds,
+    double PrimaryAttackCooldownSeconds,
+    double RoleAbilityCooldownSeconds)
+{
+    [JsonIgnore]
+    public bool IsDefeated => Health <= 0;
+}
 
-public sealed record MatchSnapshot(IReadOnlyList<FighterState> Fighters);
+public sealed record ProjectileState(
+    int ProjectileId,
+    int OwnerClientId,
+    Team Team,
+    ProjectileKind Kind,
+    GameVector Position,
+    GameVector Direction,
+    int Damage,
+    double Radius,
+    int? VolleyId = null);
+
+public sealed record CombatEffect(
+    CombatEffectKind Kind,
+    GameVector Position,
+    GameVector Direction,
+    Team Team,
+    double Radius,
+    double RemainingSeconds,
+    int? SourceClientId = null,
+    int? TargetClientId = null);
+
+[method: JsonConstructor]
+public sealed record MatchSnapshot(
+    IReadOnlyList<FighterState> Fighters,
+    IReadOnlyList<ProjectileState> Projectiles,
+    IReadOnlyList<CombatEffect> Effects)
+{
+    public MatchSnapshot(IReadOnlyList<FighterState> fighters)
+        : this(fighters, [], [])
+    {
+    }
+}
 
 public sealed class MatchSimulation
 {
     private readonly Dictionary<int, PlayerInput> _inputs = [];
+    private readonly Dictionary<int, HashSet<int>> _volleyHits = [];
+    private int _nextProjectileId = 1;
+    private int _nextVolleyId = 1;
 
     private MatchSimulation(MatchSnapshot snapshot)
     {
@@ -117,6 +230,9 @@ public sealed class MatchSimulation
                 client.Role!.Value,
                 spawnPositions[index],
                 new GameVector(1, 0),
+                MatchRules.GetStartingHealth(client.Role.Value),
+                0,
+                0,
                 0))
             .ToArray();
 
@@ -134,12 +250,74 @@ public sealed class MatchSimulation
 
     public void Tick()
     {
-        Snapshot = Snapshot with
+        var effects = Snapshot.Effects
+            .Select(effect => effect with
+            {
+                RemainingSeconds = effect.RemainingSeconds - MatchRules.FixedDeltaSeconds,
+            })
+            .Where(effect => effect.RemainingSeconds > 0)
+            .ToList();
+        var fighters = Snapshot.Fighters
+            .Select(TickFighterMovementAndCooldowns)
+            .ToDictionary(fighter => fighter.ClientId);
+        var projectiles = Snapshot.Projectiles.ToList();
+
+        foreach (var fighter in fighters.Values.OrderBy(fighter => fighter.ClientId).ToArray())
         {
-            Fighters = Snapshot.Fighters
-                .Select(TickFighter)
-                .ToArray(),
-        };
+            if (fighter.IsDefeated)
+            {
+                continue;
+            }
+
+            var input = GetInput(fighter);
+
+            if (input.PrimaryAttack && fighter.PrimaryAttackCooldownSeconds <= 0)
+            {
+                if (fighter.Role == FighterRole.Melee)
+                {
+                    ApplyMeleeFrontalStrike(fighter, fighters, effects);
+                    fighters[fighter.ClientId] = fighters[fighter.ClientId] with
+                    {
+                        PrimaryAttackCooldownSeconds = MatchRules.MeleeFrontalStrikeCooldownSeconds,
+                    };
+                }
+                else
+                {
+                    SpawnRangedSingleArrowShot(fighter, projectiles, effects);
+                    fighters[fighter.ClientId] = fighters[fighter.ClientId] with
+                    {
+                        PrimaryAttackCooldownSeconds = MatchRules.RangedSingleArrowShotCooldownSeconds,
+                    };
+                }
+            }
+
+            var currentFighter = fighters[fighter.ClientId];
+            if (input.RoleAbility && currentFighter.RoleAbilityCooldownSeconds <= 0)
+            {
+                if (currentFighter.Role == FighterRole.Melee)
+                {
+                    ApplyMeleeAreaSlash(currentFighter, fighters, effects);
+                    fighters[currentFighter.ClientId] = fighters[currentFighter.ClientId] with
+                    {
+                        RoleAbilityCooldownSeconds = MatchRules.MeleeAreaSlashCooldownSeconds,
+                    };
+                }
+                else
+                {
+                    SpawnRangedConeVolley(currentFighter, projectiles, effects);
+                    fighters[currentFighter.ClientId] = fighters[currentFighter.ClientId] with
+                    {
+                        RoleAbilityCooldownSeconds = MatchRules.RangedConeVolleyCooldownSeconds,
+                    };
+                }
+            }
+        }
+
+        projectiles = TickProjectiles(projectiles, fighters, effects);
+        Snapshot = new MatchSnapshot(
+            fighters.Values.OrderBy(fighter => fighter.ClientId).ToArray(),
+            projectiles.ToArray(),
+            effects.ToArray());
     }
 
     public void OverrideFighterPositionForTesting(int clientId, GameVector position)
@@ -154,17 +332,33 @@ public sealed class MatchSimulation
         };
     }
 
-    private FighterState TickFighter(FighterState fighter)
+    private FighterState TickFighterMovementAndCooldowns(FighterState fighter)
     {
-        var input = _inputs.GetValueOrDefault(
-            fighter.ClientId,
-            new PlayerInput(GameVector.Zero, fighter.AimDirection, false));
+        var input = GetInput(fighter);
         var aimDirection = input.AimDirection.Length == 0
             ? fighter.AimDirection
             : input.AimDirection;
         var dashCooldown = Math.Max(
             0,
             fighter.DashCooldownSeconds - MatchRules.FixedDeltaSeconds);
+        var primaryCooldown = Math.Max(
+            0,
+            fighter.PrimaryAttackCooldownSeconds - MatchRules.FixedDeltaSeconds);
+        var abilityCooldown = Math.Max(
+            0,
+            fighter.RoleAbilityCooldownSeconds - MatchRules.FixedDeltaSeconds);
+
+        if (fighter.IsDefeated)
+        {
+            return fighter with
+            {
+                AimDirection = aimDirection,
+                DashCooldownSeconds = dashCooldown,
+                PrimaryAttackCooldownSeconds = primaryCooldown,
+                RoleAbilityCooldownSeconds = abilityCooldown,
+            };
+        }
+
         var position = fighter.Position +
             (input.MoveDirection * MatchRules.FighterMoveSpeed * MatchRules.FixedDeltaSeconds);
 
@@ -179,7 +373,294 @@ public sealed class MatchSimulation
             Position = ClampToArena(position),
             AimDirection = aimDirection,
             DashCooldownSeconds = dashCooldown,
+            PrimaryAttackCooldownSeconds = primaryCooldown,
+            RoleAbilityCooldownSeconds = abilityCooldown,
         };
+    }
+
+    private PlayerInput GetInput(FighterState fighter)
+    {
+        return _inputs.GetValueOrDefault(
+            fighter.ClientId,
+            new PlayerInput(GameVector.Zero, fighter.AimDirection, false));
+    }
+
+    private static void ApplyMeleeFrontalStrike(
+        FighterState source,
+        Dictionary<int, FighterState> fighters,
+        List<CombatEffect> effects)
+    {
+        var direction = source.AimDirection.NormalizeOrZero();
+        if (direction.Length == 0)
+        {
+            direction = new GameVector(1, 0);
+        }
+
+        effects.Add(new CombatEffect(
+            CombatEffectKind.MeleeFrontalStrike,
+            source.Position,
+            direction,
+            source.Team,
+            MatchRules.MeleeFrontalStrikeRange,
+            MatchRules.CombatEffectLifetimeSeconds,
+            source.ClientId));
+
+        var minimumDot = Math.Cos(
+            MatchRules.MeleeFrontalStrikeHalfAngleDegrees * Math.PI / 180);
+
+        foreach (var target in fighters.Values.ToArray())
+        {
+            if (!CanDamage(source, target))
+            {
+                continue;
+            }
+
+            var toTarget = target.Position - source.Position;
+            var distance = toTarget.Length;
+            if (distance > MatchRules.MeleeFrontalStrikeRange + MatchRules.GetFighterRadius(target.Role))
+            {
+                continue;
+            }
+
+            if (distance > 0 &&
+                direction.Dot(toTarget.NormalizeOrZero()) < minimumDot)
+            {
+                continue;
+            }
+
+            DamageFighter(
+                source,
+                target,
+                MatchRules.MeleeFrontalStrikeDamage,
+                fighters,
+                effects);
+        }
+    }
+
+    private static void ApplyMeleeAreaSlash(
+        FighterState source,
+        Dictionary<int, FighterState> fighters,
+        List<CombatEffect> effects)
+    {
+        effects.Add(new CombatEffect(
+            CombatEffectKind.MeleeAreaSlash,
+            source.Position,
+            source.AimDirection,
+            source.Team,
+            MatchRules.MeleeAreaSlashRadius,
+            MatchRules.CombatEffectLifetimeSeconds,
+            source.ClientId));
+
+        foreach (var target in fighters.Values.ToArray())
+        {
+            if (!CanDamage(source, target))
+            {
+                continue;
+            }
+
+            if (source.Position.DistanceTo(target.Position) >
+                MatchRules.MeleeAreaSlashRadius + MatchRules.GetFighterRadius(target.Role))
+            {
+                continue;
+            }
+
+            DamageFighter(
+                source,
+                target,
+                MatchRules.MeleeAreaSlashDamage,
+                fighters,
+                effects);
+        }
+    }
+
+    private void SpawnRangedSingleArrowShot(
+        FighterState source,
+        List<ProjectileState> projectiles,
+        List<CombatEffect> effects)
+    {
+        var direction = source.AimDirection.NormalizeOrZero();
+        if (direction.Length == 0)
+        {
+            direction = new GameVector(1, 0);
+        }
+
+        projectiles.Add(CreateProjectile(
+            source,
+            ProjectileKind.RangedSingleArrowShot,
+            direction,
+            MatchRules.RangedSingleArrowShotDamage,
+            null));
+        effects.Add(new CombatEffect(
+            CombatEffectKind.RangedSingleArrowShot,
+            source.Position,
+            direction,
+            source.Team,
+            18,
+            MatchRules.CombatEffectLifetimeSeconds,
+            source.ClientId));
+    }
+
+    private void SpawnRangedConeVolley(
+        FighterState source,
+        List<ProjectileState> projectiles,
+        List<CombatEffect> effects)
+    {
+        var direction = source.AimDirection.NormalizeOrZero();
+        if (direction.Length == 0)
+        {
+            direction = new GameVector(1, 0);
+        }
+
+        var volleyId = _nextVolleyId++;
+        _volleyHits[volleyId] = [];
+        var firstAngle = -MatchRules.RangedConeVolleySpreadDegrees / 2;
+        var angleStep = MatchRules.RangedConeVolleySpreadDegrees /
+            (MatchRules.RangedConeVolleyArrowCount - 1);
+
+        for (var index = 0; index < MatchRules.RangedConeVolleyArrowCount; index++)
+        {
+            projectiles.Add(CreateProjectile(
+                source,
+                ProjectileKind.RangedConeVolleyArrow,
+                Rotate(direction, firstAngle + (angleStep * index)),
+                MatchRules.RangedConeVolleyDamage,
+                volleyId));
+        }
+
+        effects.Add(new CombatEffect(
+            CombatEffectKind.RangedConeVolley,
+            source.Position,
+            direction,
+            source.Team,
+            48,
+            MatchRules.CombatEffectLifetimeSeconds,
+            source.ClientId));
+    }
+
+    private ProjectileState CreateProjectile(
+        FighterState source,
+        ProjectileKind kind,
+        GameVector direction,
+        int damage,
+        int? volleyId)
+    {
+        var normalizedDirection = direction.NormalizeOrZero();
+        var startPosition = source.Position +
+            (normalizedDirection * (MatchRules.GetFighterRadius(source.Role) + 2));
+
+        return new ProjectileState(
+            _nextProjectileId++,
+            source.ClientId,
+            source.Team,
+            kind,
+            startPosition,
+            normalizedDirection,
+            damage,
+            MatchRules.ProjectileRadius,
+            volleyId);
+    }
+
+    private List<ProjectileState> TickProjectiles(
+        List<ProjectileState> projectiles,
+        Dictionary<int, FighterState> fighters,
+        List<CombatEffect> effects)
+    {
+        var activeProjectiles = new List<ProjectileState>();
+
+        foreach (var projectile in projectiles)
+        {
+            var moved = projectile with
+            {
+                Position = projectile.Position +
+                    (projectile.Direction * MatchRules.ProjectileSpeed * MatchRules.FixedDeltaSeconds),
+            };
+
+            if (moved.Position.Length >= MatchRules.ArenaRadius)
+            {
+                continue;
+            }
+
+            var hitTarget = fighters.Values
+                .Where(target =>
+                    target.Team != moved.Team &&
+                    !target.IsDefeated &&
+                    moved.Position.DistanceTo(target.Position) <=
+                    moved.Radius + MatchRules.GetFighterRadius(target.Role))
+                .OrderBy(target => moved.Position.DistanceTo(target.Position))
+                .FirstOrDefault();
+
+            if (hitTarget is null)
+            {
+                activeProjectiles.Add(moved);
+                continue;
+            }
+
+            if (moved.VolleyId is null ||
+                _volleyHits.GetValueOrDefault(moved.VolleyId.Value)?.Add(hitTarget.ClientId) == true)
+            {
+                DamageFighter(
+                    fighters[moved.OwnerClientId],
+                    hitTarget,
+                    moved.Damage,
+                    fighters,
+                    effects);
+            }
+        }
+
+        return activeProjectiles;
+    }
+
+    private static bool CanDamage(FighterState source, FighterState target)
+    {
+        return source.ClientId != target.ClientId &&
+            source.Team != target.Team &&
+            !source.IsDefeated &&
+            !target.IsDefeated;
+    }
+
+    private static void DamageFighter(
+        FighterState source,
+        FighterState target,
+        int damage,
+        Dictionary<int, FighterState> fighters,
+        List<CombatEffect> effects)
+    {
+        var newHealth = Math.Max(0, target.Health - damage);
+        var updatedTarget = target with { Health = newHealth };
+        fighters[target.ClientId] = updatedTarget;
+
+        effects.Add(new CombatEffect(
+            CombatEffectKind.Hit,
+            target.Position,
+            source.AimDirection,
+            target.Team,
+            MatchRules.GetFighterRadius(target.Role) + 4,
+            MatchRules.CombatEffectLifetimeSeconds,
+            source.ClientId,
+            target.ClientId));
+
+        if (target.Health > 0 && newHealth == 0)
+        {
+            effects.Add(new CombatEffect(
+                CombatEffectKind.Death,
+                target.Position,
+                source.AimDirection,
+                target.Team,
+                MatchRules.GetFighterRadius(target.Role) + 8,
+                MatchRules.CombatEffectLifetimeSeconds,
+                source.ClientId,
+                target.ClientId));
+        }
+    }
+
+    private static GameVector Rotate(GameVector vector, double degrees)
+    {
+        var radians = degrees * Math.PI / 180;
+        var cos = Math.Cos(radians);
+        var sin = Math.Sin(radians);
+        return new GameVector(
+            (vector.X * cos) - (vector.Y * sin),
+            (vector.X * sin) + (vector.Y * cos)).NormalizeOrZero();
     }
 
     private static GameVector ClampToArena(GameVector position)
