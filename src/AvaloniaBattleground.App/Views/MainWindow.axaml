@@ -179,8 +179,17 @@
                                             Margin="0,0,0,8">
                                         <Grid ColumnDefinitions="*,Auto"
                                               ColumnSpacing="12">
-                                            <TextBlock Text="{Binding DisplayName}"
-                                                       FontSize="16"/>
+                                            <StackPanel Spacing="4">
+                                                <TextBlock Text="{Binding DisplayName}"
+                                                           FontSize="16"/>
+                                                <StackPanel Orientation="Horizontal"
+                                                            Spacing="12">
+                                                    <TextBlock Text="{Binding TeamDisplay}"
+                                                               Opacity="0.72"/>
+                                                    <TextBlock Text="{Binding RoleDisplay}"
+                                                               Opacity="0.72"/>
+                                                </StackPanel>
+                                            </StackPanel>
                                             <TextBlock Grid.Column="1"
                                                        Text="{Binding HostMarker}"
                                                        IsVisible="{Binding IsHost}"
@@ -190,6 +199,48 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+                    </StackPanel>
+
+                    <Grid ColumnDefinitions="*,*"
+                          RowDefinitions="Auto,Auto"
+                          ColumnSpacing="12"
+                          RowSpacing="8">
+                        <TextBlock Text="Team"/>
+                        <TextBlock Grid.Column="1"
+                                   Text="Fighter Role"/>
+                        <ComboBox Grid.Row="1"
+                                  ItemsSource="{Binding TeamOptions}"
+                                  SelectedItem="{Binding SelectedTeam, Mode=TwoWay}"
+                                  HorizontalAlignment="Stretch"/>
+                        <ComboBox Grid.Row="1"
+                                  Grid.Column="1"
+                                  ItemsSource="{Binding RoleOptions}"
+                                  SelectedItem="{Binding SelectedRole, Mode=TwoWay}"
+                                  HorizontalAlignment="Stretch"/>
+                    </Grid>
+
+                    <TextBlock Text="{Binding SelectionFeedback}"
+                               IsVisible="{Binding HasSelectionFeedback}"
+                               Foreground="#B3261E"
+                               TextWrapping="Wrap"/>
+
+                    <Button Content="Apply Selection"
+                            Command="{Binding ApplySelectionCommand}"
+                            MinHeight="42"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"/>
+
+                    <StackPanel IsVisible="{Binding IsHostLobby}"
+                                Spacing="8">
+                        <TextBlock Text="{Binding StartLockStatus}"
+                                   Opacity="0.72"
+                                   TextWrapping="Wrap"/>
+                        <Button Content="Start Match"
+                                Command="{Binding StartMatchCommand}"
+                                IsEnabled="{Binding CanStartMatch}"
+                                MinHeight="42"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"/>
                     </StackPanel>
 
                     <Button Content="Back"

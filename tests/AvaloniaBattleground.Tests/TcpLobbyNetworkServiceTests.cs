@@ -1,3 +1,4 @@
+using AvaloniaBattleground.Core;
 using AvaloniaBattleground.Networking;
 using System.Net;
 using System.Net.Sockets;
@@ -77,6 +78,54 @@ public sealed class TcpLobbyNetworkServiceTests
         Assert.False(joinResult.Succeeded);
         Assert.Equal(JoinFailureReason.ProtocolVersionMismatch, joinResult.FailureReason);
         Assert.Contains("protocol version", joinResult.FailureMessage);
+    }
+
+    [Fact]
+    public async Task Connected_client_can_choose_team_and_fighter_role()
+    {
+        var networkService = new TcpLobbyNetworkService();
+        await using var host = await networkService.StartHostAsync("Host Player");
+        var joinResult = await networkService.JoinAsync(
+            new JoinLobbyRequest("127.0.0.1", host.Port, "Joining Player"));
+        await using var client = joinResult.Session!;
+
+        var selectionResult = await client.SelectTeamRoleAsync(Team.Red, FighterRole.Melee);
+
+        Assert.True(selectionResult.Succeeded, selectionResult.Message);
+        var hostSnapshot = await WaitForSnapshotAsync(
+            host,
+            snapshot => snapshot.Clients.Any(lobbyClient =>
+                lobbyClient.DisplayName == "Joining Player" &&
+                lobbyClient.Team == Team.Red &&
+                lobbyClient.Role == FighterRole.Melee));
+        var clientSnapshot = await WaitForSnapshotAsync(
+            client,
+            snapshot => snapshot.Clients.Any(lobbyClient =>
+                lobbyClient.DisplayName == "Joining Player" &&
+                lobbyClient.Team == Team.Red &&
+                lobbyClient.Role == FighterRole.Melee));
+
+        Assert.Equal(hostSnapshot.Clients, clientSnapshot.Clients);
+    }
+
+    [Fact]
+    public async Task Team_role_conflict_selection_is_rejected_cleanly()
+    {
+        var networkService = new TcpLobbyNetworkService();
+        await using var host = await networkService.StartHostAsync("Host Player");
+        var joinResult = await networkService.JoinAsync(
+            new JoinLobbyRequest("127.0.0.1", host.Port, "Joining Player"));
+        await using var client = joinResult.Session!;
+
+        var hostSelection = await host.SelectTeamRoleAsync(Team.Red, FighterRole.Melee);
+        var clientSelection = await client.SelectTeamRoleAsync(Team.Red, FighterRole.Melee);
+
+        Assert.True(hostSelection.Succeeded, hostSelection.Message);
+        Assert.False(clientSelection.Succeeded);
+        Assert.Equal(LobbySelectionFailureReason.TeamRoleConflict, clientSelection.FailureReason);
+        Assert.Contains("already selected", clientSelection.Message);
+        Assert.Null(client.Snapshot.Clients.Single(lobbyClient => lobbyClient.DisplayName == "Joining Player").Team);
+        Assert.Null(client.Snapshot.Clients.Single(lobbyClient => lobbyClient.DisplayName == "Joining Player").Role);
     }
 
     [Theory]
