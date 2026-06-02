@@ -253,15 +253,134 @@
             </Grid>
 
             <Grid IsVisible="{Binding IsMatchScreen}"
-                  RowDefinitions="*,Auto"
-                  RowSpacing="16">
-                <views:GameSurface MatchSnapshot="{Binding MatchSnapshot}"
-                                   MinHeight="360"
-                                   HorizontalAlignment="Stretch"
-                                   VerticalAlignment="Stretch"
-                                   Focusable="True"/>
+                  RowDefinitions="Auto,*,Auto,Auto"
+                  RowSpacing="12">
+                <Grid ColumnDefinitions="*,Auto,*"
+                      ColumnSpacing="16">
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="12"
+                                VerticalAlignment="Center">
+                        <TextBlock Text="{Binding MatchRoundDisplay}"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding MatchTimerDisplay}"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"/>
+                    </StackPanel>
 
-                <Button Grid.Row="1"
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding MatchScoreDisplay}"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"/>
+
+                    <TextBlock Grid.Column="2"
+                               Text="{Binding MatchResultDisplay}"
+                               IsVisible="{Binding HasMatchResult}"
+                               TextWrapping="Wrap"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Center"
+                               Opacity="0.78"/>
+                </Grid>
+
+                <Grid Grid.Row="1">
+                    <views:GameSurface MatchSnapshot="{Binding MatchSnapshot}"
+                                       MinHeight="320"
+                                       HorizontalAlignment="Stretch"
+                                       VerticalAlignment="Stretch"
+                                       Focusable="True"/>
+
+                    <Border IsVisible="{Binding HasMatchResult}"
+                            Background="#DD101418"
+                            BorderBrush="#66F4F7FA"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="24,18"
+                            MaxWidth="420"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="{Binding MatchResultDisplay}"
+                                       FontSize="24"
+                                       FontWeight="SemiBold"
+                                       TextAlignment="Center"
+                                       TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding MatchScoreDisplay}"
+                                       FontSize="16"
+                                       TextAlignment="Center"
+                                       Opacity="0.78"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <ItemsControl Grid.Row="2"
+                              ItemsSource="{Binding MatchFighters}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Rows="1"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:MatchFighterHudItemViewModel">
+                            <Border BorderBrush="#33818A96"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="10"
+                                    Margin="0,0,8,0">
+                                <Grid RowDefinitions="Auto,Auto,Auto"
+                                      RowSpacing="6">
+                                    <Grid ColumnDefinitions="*,Auto"
+                                          ColumnSpacing="8">
+                                        <TextBlock Text="{Binding DisplayName}"
+                                                   FontWeight="SemiBold"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding StateDisplay}"
+                                                   Opacity="0.72"/>
+                                    </Grid>
+
+                                    <StackPanel Grid.Row="1"
+                                                Orientation="Horizontal"
+                                                Spacing="8">
+                                        <TextBlock Text="{Binding TeamDisplay}"
+                                                   Opacity="0.72"/>
+                                        <TextBlock Text="{Binding RoleDisplay}"
+                                                   Opacity="0.72"/>
+                                    </StackPanel>
+
+                                    <Grid Grid.Row="2"
+                                          RowDefinitions="Auto,Auto,Auto"
+                                          ColumnDefinitions="Auto,*"
+                                          RowSpacing="3"
+                                          ColumnSpacing="8">
+                                        <TextBlock Text="Health"
+                                                   Opacity="0.72"/>
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding HealthDisplay}"
+                                                   HorizontalAlignment="Right"/>
+                                        <TextBlock Grid.Row="1"
+                                                   Text="Primary"
+                                                   Opacity="0.72"/>
+                                        <TextBlock Grid.Row="1"
+                                                   Grid.Column="1"
+                                                   Text="{Binding PrimaryCooldownDisplay}"
+                                                   HorizontalAlignment="Right"/>
+                                        <TextBlock Grid.Row="2"
+                                                   Text="Ability"
+                                                   Opacity="0.72"/>
+                                        <TextBlock Grid.Row="2"
+                                                   Grid.Column="1"
+                                                   Text="{Binding AbilityCooldownDisplay}"
+                                                   HorizontalAlignment="Right"/>
+                                    </Grid>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Button Grid.Row="3"
                         Content="Back"
                         Command="{Binding BackToMainMenuCommand}"
                         MinHeight="42"

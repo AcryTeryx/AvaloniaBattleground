@@ -161,6 +161,121 @@ public sealed class MatchSimulationTests
     }
 
     [Fact]
+    public void Team_elimination_ends_round_and_moves_defeated_fighters_to_spectator_state()
+    {
+        var match = MatchSimulation.Start(CreateValidLobby());
+        match.OverrideFighterPositionForTesting(1, GameVector.Zero);
+        match.OverrideFighterPositionForTesting(3, new GameVector(24, 0));
+        match.OverrideFighterPositionForTesting(4, new GameVector(32, 0));
+
+        for (var attack = 0; attack < 6; attack++)
+        {
+            UseMeleeAreaSlash(match, 1);
+            if (attack < 5)
+            {
+                AdvanceTicks(match, MatchRules.MeleeAreaSlashCooldownSeconds);
+            }
+        }
+
+        Assert.Equal(MatchPhase.RoundComplete, match.Snapshot.Phase);
+        Assert.Equal(1, match.Snapshot.RedRoundWins);
+        Assert.Equal(0, match.Snapshot.BlueRoundWins);
+
+        Assert.NotNull(match.Snapshot.RoundResult);
+        var roundResult = match.Snapshot.RoundResult!;
+        Assert.Equal(Team.Red, roundResult.WinningTeam);
+        Assert.Equal(RoundWinReason.TeamElimination, roundResult.WinReason);
+        Assert.Equal(1, roundResult.RoundNumber);
+        Assert.All(
+            match.Snapshot.Fighters.Where(fighter => fighter.Team == Team.Blue),
+            fighter => Assert.True(fighter.IsDefeated));
+
+        var defeatedRangedPosition = match.Snapshot.Fighters
+            .Single(fighter => fighter.ClientId == 4)
+            .Position;
+        match.SetInput(4, new PlayerInput(new GameVector(1, 0), new GameVector(-1, 0), false, true, true));
+        match.Tick();
+
+        var spectator = match.Snapshot.Fighters.Single(fighter => fighter.ClientId == 4);
+        Assert.Equal(defeatedRangedPosition, spectator.Position);
+        Assert.Empty(match.Snapshot.Projectiles);
+    }
+
+    [Fact]
+    public void Round_timeout_awards_health_tiebreaker_to_team_with_most_combined_health()
+    {
+        var match = MatchSimulation.Start(CreateValidLobby());
+        match.OverrideFighterPositionForTesting(2, GameVector.Zero);
+        match.OverrideFighterPositionForTesting(3, new GameVector(20, 0));
+
+        match.SetInput(2, new PlayerInput(GameVector.Zero, new GameVector(1, 0), false, true, false));
+        match.Tick();
+        match.SetInput(2, new PlayerInput(GameVector.Zero, new GameVector(1, 0), false));
+        AdvanceTicks(match, MatchRules.RoundDurationSeconds);
+
+        Assert.Equal(MatchPhase.RoundComplete, match.Snapshot.Phase);
+        Assert.Equal(0, match.Snapshot.RoundTimeRemainingSeconds);
+        Assert.Equal(1, match.Snapshot.RedRoundWins);
+        Assert.Equal(0, match.Snapshot.BlueRoundWins);
+        Assert.All(match.Snapshot.Fighters, fighter => Assert.False(fighter.IsDefeated));
+
+        Assert.NotNull(match.Snapshot.RoundResult);
+        var roundResult = match.Snapshot.RoundResult!;
+        Assert.Equal(Team.Red, roundResult.WinningTeam);
+        Assert.Equal(RoundWinReason.HealthTiebreaker, roundResult.WinReason);
+    }
+
+    [Fact]
+    public void Completed_round_advances_to_next_round_and_resets_live_state()
+    {
+        var match = MatchSimulation.Start(CreateValidLobby());
+
+        WinRoundByBlueTeamElimination(match);
+        AdvanceTicks(match, MatchRules.RoundTransitionSeconds);
+
+        Assert.Equal(MatchPhase.InRound, match.Snapshot.Phase);
+        Assert.Equal(2, match.Snapshot.RoundNumber);
+        Assert.Equal(1, match.Snapshot.RedRoundWins);
+        Assert.Equal(0, match.Snapshot.BlueRoundWins);
+        Assert.Equal(MatchRules.RoundDurationSeconds, match.Snapshot.RoundTimeRemainingSeconds, precision: 6);
+        Assert.Null(match.Snapshot.RoundResult);
+        Assert.Null(match.Snapshot.MatchWinner);
+        Assert.Empty(match.Snapshot.Projectiles);
+        Assert.Empty(match.Snapshot.Effects);
+        Assert.All(match.Snapshot.Fighters, fighter =>
+        {
+            Assert.Equal(MatchRules.GetStartingHealth(fighter.Role), fighter.Health);
+            Assert.Equal(0, fighter.DashCooldownSeconds);
+            Assert.Equal(0, fighter.PrimaryAttackCooldownSeconds);
+            Assert.Equal(0, fighter.RoleAbilityCooldownSeconds);
+            Assert.False(fighter.IsDefeated);
+        });
+    }
+
+    [Fact]
+    public void Match_completes_after_second_round_win_and_does_not_advance_again()
+    {
+        var match = MatchSimulation.Start(CreateValidLobby());
+
+        WinRoundByBlueTeamElimination(match);
+        AdvanceTicks(match, MatchRules.RoundTransitionSeconds);
+        WinRoundByBlueTeamElimination(match);
+        AdvanceTicks(match, MatchRules.RoundTransitionSeconds);
+
+        Assert.Equal(MatchPhase.MatchComplete, match.Snapshot.Phase);
+        Assert.Equal(2, match.Snapshot.RoundNumber);
+        Assert.Equal(2, match.Snapshot.RedRoundWins);
+        Assert.Equal(0, match.Snapshot.BlueRoundWins);
+        Assert.Equal(Team.Red, match.Snapshot.MatchWinner);
+
+        Assert.NotNull(match.Snapshot.RoundResult);
+        var roundResult = match.Snapshot.RoundResult!;
+        Assert.Equal(Team.Red, roundResult.WinningTeam);
+        Assert.Equal(RoundWinReason.TeamElimination, roundResult.WinReason);
+        Assert.Equal(2, roundResult.RoundNumber);
+    }
+
+    [Fact]
     public void Ranged_single_arrow_shot_damages_enemy_and_removes_projectile_on_hit()
     {
         var match = MatchSimulation.Start(CreateValidLobby());
@@ -253,6 +368,29 @@ public sealed class MatchSimulationTests
         for (var index = 0; index < ticks; index++)
         {
             match.Tick();
+        }
+    }
+
+    private static void UseMeleeAreaSlash(MatchSimulation match, int clientId)
+    {
+        match.SetInput(clientId, new PlayerInput(GameVector.Zero, new GameVector(1, 0), false, false, true));
+        match.Tick();
+        match.SetInput(clientId, new PlayerInput(GameVector.Zero, new GameVector(1, 0), false));
+    }
+
+    private static void WinRoundByBlueTeamElimination(MatchSimulation match)
+    {
+        match.OverrideFighterPositionForTesting(1, GameVector.Zero);
+        match.OverrideFighterPositionForTesting(3, new GameVector(24, 0));
+        match.OverrideFighterPositionForTesting(4, new GameVector(32, 0));
+
+        for (var attack = 0; attack < 6; attack++)
+        {
+            UseMeleeAreaSlash(match, 1);
+            if (attack < 5)
+            {
+                AdvanceTicks(match, MatchRules.MeleeAreaSlashCooldownSeconds);
+            }
         }
     }
 }
