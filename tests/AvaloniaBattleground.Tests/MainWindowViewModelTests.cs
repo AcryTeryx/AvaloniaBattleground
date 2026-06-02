@@ -352,6 +352,59 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Shell_updates_match_hud_from_received_match_snapshot()
+    {
+        var hostSession = new FakeHostLobbySession(
+            ["127.0.0.1"],
+            5000,
+            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+        var networkService = new RecordingLobbyNetworkService
+        {
+            HostSession = hostSession,
+        };
+        var viewModel = new MainWindowViewModel(
+            new LocalProfileStore(CreateProfilePath()),
+            new RecordingApplicationShell(),
+            networkService,
+            new ImmediateViewDispatcher());
+        var snapshot = new MatchSnapshot(
+            [
+                new FighterState(1, "Player 1", Team.Red, FighterRole.Melee, GameVector.Zero, new GameVector(1, 0), 150, 0, 0.25, 3.1),
+                new FighterState(2, "Player 2", Team.Red, FighterRole.Ranged, GameVector.Zero, new GameVector(1, 0), 100, 0, 0, 0),
+                new FighterState(3, "Player 3", Team.Blue, FighterRole.Melee, GameVector.Zero, new GameVector(1, 0), 0, 0, 0, 0),
+                new FighterState(4, "Player 4", Team.Blue, FighterRole.Ranged, GameVector.Zero, new GameVector(1, 0), 0, 0, 0, 0),
+            ],
+            [],
+            [],
+            2,
+            12.2,
+            1,
+            0,
+            MatchPhase.RoundComplete,
+            new RoundResult(Team.Red, RoundWinReason.TeamElimination, 1));
+
+        await viewModel.HostMatchCommand.ExecuteAsync(null);
+        hostSession.PublishMatchSnapshot(snapshot);
+
+        Assert.True(viewModel.IsMatchScreen);
+        Assert.Equal("Round 2", viewModel.MatchRoundDisplay);
+        Assert.Equal("0:13", viewModel.MatchTimerDisplay);
+        Assert.Equal("Red 1 - 0 Blue", viewModel.MatchScoreDisplay);
+        Assert.True(viewModel.HasMatchResult);
+        Assert.Contains("Red wins round 1", viewModel.MatchResultDisplay);
+        Assert.Contains("team elimination", viewModel.MatchResultDisplay);
+        Assert.Equal(4, viewModel.MatchFighters.Count);
+
+        var damagedMelee = viewModel.MatchFighters.Single(fighter => fighter.ClientId == 1);
+        Assert.Equal("150/200", damagedMelee.HealthDisplay);
+        Assert.Equal("Primary 0.3s", damagedMelee.PrimaryCooldownDisplay);
+        Assert.Equal("Ability 3.1s", damagedMelee.AbilityCooldownDisplay);
+
+        var spectator = viewModel.MatchFighters.Single(fighter => fighter.ClientId == 3);
+        Assert.Equal("Spectator", spectator.StateDisplay);
+    }
+
+    [Fact]
     public void Exit_command_requests_application_exit()
     {
         var shell = new RecordingApplicationShell();

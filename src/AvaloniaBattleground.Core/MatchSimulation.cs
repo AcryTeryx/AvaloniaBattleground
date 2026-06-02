@@ -71,6 +71,9 @@ public static class MatchRules
     public const double ProjectileSpeed = 300;
     public const double ProjectileRadius = 4;
     public const double CombatEffectLifetimeSeconds = 0.18;
+    public const double RoundDurationSeconds = 90;
+    public const double RoundTransitionSeconds = 3;
+    public const int RoundsToWinMatch = 2;
 
     public static int GetStartingHealth(FighterRole role)
     {
@@ -143,6 +146,24 @@ public enum CombatEffectKind
     Death,
 }
 
+public enum MatchPhase
+{
+    InRound,
+    RoundComplete,
+    MatchComplete,
+}
+
+public enum RoundWinReason
+{
+    TeamElimination,
+    HealthTiebreaker,
+}
+
+public sealed record RoundResult(
+    Team WinningTeam,
+    RoundWinReason WinReason,
+    int RoundNumber);
+
 public sealed record FighterState(
     int ClientId,
     string DisplayName,
@@ -184,7 +205,14 @@ public sealed record CombatEffect(
 public sealed record MatchSnapshot(
     IReadOnlyList<FighterState> Fighters,
     IReadOnlyList<ProjectileState> Projectiles,
-    IReadOnlyList<CombatEffect> Effects)
+    IReadOnlyList<CombatEffect> Effects,
+    int RoundNumber = 1,
+    double RoundTimeRemainingSeconds = MatchRules.RoundDurationSeconds,
+    int RedRoundWins = 0,
+    int BlueRoundWins = 0,
+    MatchPhase Phase = MatchPhase.InRound,
+    RoundResult? RoundResult = null,
+    Team? MatchWinner = null)
 {
     public MatchSnapshot(IReadOnlyList<FighterState> fighters)
         : this(fighters, [], [])
@@ -194,10 +222,19 @@ public sealed record MatchSnapshot(
 
 public sealed class MatchSimulation
 {
+    private static readonly GameVector[] SpawnPositions =
+    [
+        new(-120, -80),
+        new(-120, 80),
+        new(120, -80),
+        new(120, 80),
+    ];
+
     private readonly Dictionary<int, PlayerInput> _inputs = [];
     private readonly Dictionary<int, HashSet<int>> _volleyHits = [];
     private int _nextProjectileId = 1;
     private int _nextVolleyId = 1;
+    private double _roundTransitionRemainingSeconds;
 
     private MatchSimulation(MatchSnapshot snapshot)
     {
@@ -213,14 +250,6 @@ public sealed class MatchSimulation
             throw new InvalidOperationException("A Match can start only from a valid Lobby.");
         }
 
-        var spawnPositions = new[]
-        {
-            new GameVector(-120, -80),
-            new GameVector(-120, 80),
-            new GameVector(120, -80),
-            new GameVector(120, 80),
-        };
-
         var fighters = lobby.Clients
             .OrderBy(client => client.ClientId)
             .Select((client, index) => new FighterState(
@@ -228,7 +257,7 @@ public sealed class MatchSimulation
                 client.DisplayName,
                 client.Team!.Value,
                 client.Role!.Value,
-                spawnPositions[index],
+                SpawnPositions[index],
                 new GameVector(1, 0),
                 MatchRules.GetStartingHealth(client.Role.Value),
                 0,
@@ -250,6 +279,25 @@ public sealed class MatchSimulation
 
     public void Tick()
     {
+        if (Snapshot.Phase == MatchPhase.RoundComplete)
+        {
+            _roundTransitionRemainingSeconds = Math.Max(
+                0,
+                _roundTransitionRemainingSeconds - MatchRules.FixedDeltaSeconds);
+
+            if (_roundTransitionRemainingSeconds <= 0.000001)
+            {
+                StartNextRound();
+            }
+
+            return;
+        }
+
+        if (Snapshot.Phase == MatchPhase.MatchComplete)
+        {
+            return;
+        }
+
         var effects = Snapshot.Effects
             .Select(effect => effect with
             {
@@ -314,10 +362,15 @@ public sealed class MatchSimulation
         }
 
         projectiles = TickProjectiles(projectiles, fighters, effects);
-        Snapshot = new MatchSnapshot(
-            fighters.Values.OrderBy(fighter => fighter.ClientId).ToArray(),
-            projectiles.ToArray(),
-            effects.ToArray());
+        Snapshot = CompleteRoundIfNeeded(Snapshot with
+        {
+            Fighters = fighters.Values.OrderBy(fighter => fighter.ClientId).ToArray(),
+            Projectiles = projectiles.ToArray(),
+            Effects = effects.ToArray(),
+            RoundTimeRemainingSeconds = Math.Max(
+                0,
+                Snapshot.RoundTimeRemainingSeconds - MatchRules.FixedDeltaSeconds),
+        });
     }
 
     public void OverrideFighterPositionForTesting(int clientId, GameVector position)
@@ -651,6 +704,101 @@ public sealed class MatchSimulation
                 source.ClientId,
                 target.ClientId));
         }
+    }
+
+    private void StartNextRound()
+    {
+        _roundTransitionRemainingSeconds = 0;
+        _volleyHits.Clear();
+
+        Snapshot = Snapshot with
+        {
+            Fighters = Snapshot.Fighters
+                .OrderBy(fighter => fighter.ClientId)
+                .Select((fighter, index) => fighter with
+                {
+                    Position = SpawnPositions[index],
+                    AimDirection = new GameVector(1, 0),
+                    Health = MatchRules.GetStartingHealth(fighter.Role),
+                    DashCooldownSeconds = 0,
+                    PrimaryAttackCooldownSeconds = 0,
+                    RoleAbilityCooldownSeconds = 0,
+                })
+                .ToArray(),
+            Projectiles = [],
+            Effects = [],
+            RoundNumber = Snapshot.RoundNumber + 1,
+            RoundTimeRemainingSeconds = MatchRules.RoundDurationSeconds,
+            Phase = MatchPhase.InRound,
+            RoundResult = null,
+            MatchWinner = null,
+        };
+    }
+
+    private MatchSnapshot CompleteRoundIfNeeded(MatchSnapshot snapshot)
+    {
+        var redAlive = snapshot.Fighters.Any(fighter =>
+            fighter.Team == Team.Red &&
+            !fighter.IsDefeated);
+        var blueAlive = snapshot.Fighters.Any(fighter =>
+            fighter.Team == Team.Blue &&
+            !fighter.IsDefeated);
+
+        return (redAlive, blueAlive) switch
+        {
+            (true, false) => CompleteRound(snapshot, Team.Red, RoundWinReason.TeamElimination),
+            (false, true) => CompleteRound(snapshot, Team.Blue, RoundWinReason.TeamElimination),
+            (true, true) when snapshot.RoundTimeRemainingSeconds <= 0 =>
+                CompleteRound(snapshot, GetHealthTiebreakerWinner(snapshot), RoundWinReason.HealthTiebreaker),
+            _ => snapshot,
+        };
+    }
+
+    private static Team GetHealthTiebreakerWinner(MatchSnapshot snapshot)
+    {
+        var redHealth = GetCombinedHealth(snapshot, Team.Red);
+        var blueHealth = GetCombinedHealth(snapshot, Team.Blue);
+
+        return redHealth >= blueHealth
+            ? Team.Red
+            : Team.Blue;
+    }
+
+    private static int GetCombinedHealth(MatchSnapshot snapshot, Team team)
+    {
+        return snapshot.Fighters
+            .Where(fighter => fighter.Team == team)
+            .Sum(fighter => fighter.Health);
+    }
+
+    private MatchSnapshot CompleteRound(
+        MatchSnapshot snapshot,
+        Team winningTeam,
+        RoundWinReason reason)
+    {
+        var redRoundWins = snapshot.RedRoundWins + (winningTeam == Team.Red ? 1 : 0);
+        var blueRoundWins = snapshot.BlueRoundWins + (winningTeam == Team.Blue ? 1 : 0);
+        var matchWinner = redRoundWins >= MatchRules.RoundsToWinMatch
+            ? Team.Red
+            : blueRoundWins >= MatchRules.RoundsToWinMatch
+                ? Team.Blue
+                : (Team?)null;
+
+        _roundTransitionRemainingSeconds = matchWinner is null
+            ? MatchRules.RoundTransitionSeconds
+            : 0;
+
+        return snapshot with
+        {
+            Projectiles = [],
+            Phase = matchWinner is null
+                ? MatchPhase.RoundComplete
+                : MatchPhase.MatchComplete,
+            RoundResult = new RoundResult(winningTeam, reason, snapshot.RoundNumber),
+            RedRoundWins = redRoundWins,
+            BlueRoundWins = blueRoundWins,
+            MatchWinner = matchWinner,
+        };
     }
 
     private static GameVector Rotate(GameVector vector, double degrees)

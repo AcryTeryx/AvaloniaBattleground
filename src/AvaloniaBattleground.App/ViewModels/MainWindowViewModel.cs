@@ -36,6 +36,11 @@ public partial class MainWindowViewModel : ViewModelBase
     private string _joinPortInput = string.Empty;
     private ILobbySession? _lobbySession;
     private MatchSnapshot? _matchSnapshot;
+    private string _matchRoundDisplay = "Round 1";
+    private string _matchTimerDisplay = "1:30";
+    private string _matchScoreDisplay = "Red 0 - 0 Blue";
+    private string _matchResultDisplay = string.Empty;
+    private bool _hasMatchResult;
     private bool _moveDown;
     private bool _moveLeft;
     private bool _moveRight;
@@ -182,6 +187,36 @@ public partial class MainWindowViewModel : ViewModelBase
         private set => SetProperty(ref _matchSnapshot, value);
     }
 
+    public string MatchRoundDisplay
+    {
+        get => _matchRoundDisplay;
+        private set => SetProperty(ref _matchRoundDisplay, value);
+    }
+
+    public string MatchTimerDisplay
+    {
+        get => _matchTimerDisplay;
+        private set => SetProperty(ref _matchTimerDisplay, value);
+    }
+
+    public string MatchScoreDisplay
+    {
+        get => _matchScoreDisplay;
+        private set => SetProperty(ref _matchScoreDisplay, value);
+    }
+
+    public string MatchResultDisplay
+    {
+        get => _matchResultDisplay;
+        private set => SetProperty(ref _matchResultDisplay, value);
+    }
+
+    public bool HasMatchResult
+    {
+        get => _hasMatchResult;
+        private set => SetProperty(ref _hasMatchResult, value);
+    }
+
     public string JoinAddressInput
     {
         get => _joinAddressInput;
@@ -231,6 +266,8 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     public ObservableCollection<LobbyClientItemViewModel> LobbyClients { get; } = [];
+
+    public ObservableCollection<MatchFighterHudItemViewModel> MatchFighters { get; } = [];
 
     public ICommand SaveDisplayNameCommand { get; }
 
@@ -397,6 +434,7 @@ public partial class MainWindowViewModel : ViewModelBase
         _snapshotChangedHandler = null;
         _matchSnapshotChangedHandler = null;
         MatchSnapshot = null;
+        UpdateMatchHud(null);
         CanStartMatch = false;
         StartLockStatus = "Waiting for exactly four Clients.";
         LobbyClients.Clear();
@@ -502,11 +540,75 @@ public partial class MainWindowViewModel : ViewModelBase
     private void ShowMatchSnapshot(MatchSnapshot snapshot)
     {
         MatchSnapshot = snapshot;
+        UpdateMatchHud(snapshot);
         CurrentScreenTitle = "Match";
         IsMainMenu = false;
         IsJoinScreen = false;
         IsLobbyScreen = false;
         IsMatchScreen = true;
+    }
+
+    private void UpdateMatchHud(MatchSnapshot? snapshot)
+    {
+        MatchFighters.Clear();
+
+        if (snapshot is null)
+        {
+            MatchRoundDisplay = "Round 1";
+            MatchTimerDisplay = FormatRoundTimer(MatchRules.RoundDurationSeconds);
+            MatchScoreDisplay = "Red 0 - 0 Blue";
+            MatchResultDisplay = string.Empty;
+            HasMatchResult = false;
+            return;
+        }
+
+        MatchRoundDisplay = $"Round {snapshot.RoundNumber}";
+        MatchTimerDisplay = FormatRoundTimer(snapshot.RoundTimeRemainingSeconds);
+        MatchScoreDisplay = $"Red {snapshot.RedRoundWins} - {snapshot.BlueRoundWins} Blue";
+        MatchResultDisplay = GetMatchResultDisplay(snapshot);
+        HasMatchResult = !string.IsNullOrWhiteSpace(MatchResultDisplay);
+
+        foreach (var fighter in snapshot.Fighters.OrderBy(fighter => fighter.ClientId))
+        {
+            MatchFighters.Add(MatchFighterHudItemViewModel.FromFighter(fighter));
+        }
+    }
+
+    private static string FormatRoundTimer(double seconds)
+    {
+        var wholeSeconds = Math.Max(0, (int)Math.Ceiling(seconds));
+        return FormattableString.Invariant($"{wholeSeconds / 60}:{wholeSeconds % 60:00}");
+    }
+
+    private static string GetMatchResultDisplay(MatchSnapshot snapshot)
+    {
+        if (snapshot.MatchWinner is not null && snapshot.RoundResult is not null)
+        {
+            var winReason = FormatWinReason(snapshot.RoundResult.WinReason);
+            return FormattableString.Invariant(
+                $"{snapshot.MatchWinner.Value} wins the match after round {snapshot.RoundResult.RoundNumber} by {winReason}");
+        }
+
+        if (snapshot.MatchWinner is not null)
+        {
+            return $"{snapshot.MatchWinner.Value} wins the match";
+        }
+
+        if (snapshot.RoundResult is null)
+        {
+            return string.Empty;
+        }
+
+        var roundWinReason = FormatWinReason(snapshot.RoundResult.WinReason);
+        return FormattableString.Invariant(
+            $"{snapshot.RoundResult.WinningTeam} wins round {snapshot.RoundResult.RoundNumber} by {roundWinReason}");
+    }
+
+    private static string FormatWinReason(RoundWinReason winReason)
+    {
+        return winReason == RoundWinReason.TeamElimination
+            ? "team elimination"
+            : "health tiebreaker";
     }
 
     public void SetMatchKeyState(MatchInputKey key, bool isPressed)
