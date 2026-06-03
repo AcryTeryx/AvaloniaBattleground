@@ -48,7 +48,7 @@
         </Grid>
 
         <Grid Grid.Row="1">
-            <Grid IsVisible="{Binding IsMainMenu}">
+            <Grid IsVisible="{Binding CurrentScreen, Converter={x:Static views:EnumEqualsConverter.Instance}, ConverterParameter={x:Static vm:AppScreen.MainMenu}}">
                 <StackPanel Width="360"
                             Spacing="16"
                             HorizontalAlignment="Center"
@@ -92,7 +92,7 @@
                 </StackPanel>
             </Grid>
 
-            <Grid IsVisible="{Binding IsJoinScreen}">
+            <Grid IsVisible="{Binding CurrentScreen, Converter={x:Static views:EnumEqualsConverter.Instance}, ConverterParameter={x:Static vm:AppScreen.Join}}">
                 <StackPanel Width="420"
                             Spacing="16"
                             HorizontalAlignment="Center"
@@ -134,7 +134,7 @@
                 </StackPanel>
             </Grid>
 
-            <Grid IsVisible="{Binding IsLobbyScreen}">
+            <Grid IsVisible="{Binding CurrentScreen, Converter={x:Static views:EnumEqualsConverter.Instance}, ConverterParameter={x:Static vm:AppScreen.Lobby}}">
                 <StackPanel Width="520"
                             Spacing="18"
                             HorizontalAlignment="Center"
@@ -252,7 +252,7 @@
                 </StackPanel>
             </Grid>
 
-            <Grid IsVisible="{Binding IsMatchScreen}"
+            <Grid IsVisible="{Binding CurrentScreen, Converter={x:Static views:EnumEqualsConverter.Instance}, ConverterParameter={x:Static vm:AppScreen.Match}}"
                   RowDefinitions="Auto,*,Auto,Auto"
                   RowSpacing="12">
                 <Grid ColumnDefinitions="*,Auto,*"

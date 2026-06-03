@@ -26,6 +26,8 @@ public partial class MainWindow : Window
     private void HandleKey(KeyEventArgs e, bool isPressed)
     {
         if (DataContext is not MainWindowViewModel viewModel ||
+            viewModel.CurrentScreen != AppScreen.Match ||
+            IsTextInputFocused() ||
             !TryMapKey(e.Key, out var inputKey))
         {
             return;
@@ -33,6 +35,11 @@ public partial class MainWindow : Window
 
         viewModel.SetMatchKeyState(inputKey, isPressed);
         e.Handled = true;
+    }
+
+    private bool IsTextInputFocused()
+    {
+        return FocusManager?.GetFocusedElement() is TextBox;
     }
 
     private static bool TryMapKey(Key key, out MatchInputKey inputKey)

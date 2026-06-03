@@ -29,12 +29,9 @@ public partial class MainWindowViewModel : ViewModelBase
     private bool _hasSelectionFeedback;
     private string _hostAddressesDisplay = string.Empty;
     private string _hostPortDisplay = string.Empty;
+    private AppScreen _currentScreen = AppScreen.MainMenu;
     private bool _isBusy;
     private bool _isHostLobby;
-    private bool _isJoinScreen;
-    private bool _isLobbyScreen;
-    private bool _isMainMenu = true;
-    private bool _isMatchScreen;
     private string _joinAddressInput = "127.0.0.1";
     private string _joinPortInput = string.Empty;
     private ILobbySession? _lobbySession;
@@ -109,28 +106,10 @@ public partial class MainWindowViewModel : ViewModelBase
         private set => SetProperty(ref _currentScreenTitle, value);
     }
 
-    public bool IsMainMenu
+    public AppScreen CurrentScreen
     {
-        get => _isMainMenu;
-        private set => SetProperty(ref _isMainMenu, value);
-    }
-
-    public bool IsJoinScreen
-    {
-        get => _isJoinScreen;
-        private set => SetProperty(ref _isJoinScreen, value);
-    }
-
-    public bool IsLobbyScreen
-    {
-        get => _isLobbyScreen;
-        private set => SetProperty(ref _isLobbyScreen, value);
-    }
-
-    public bool IsMatchScreen
-    {
-        get => _isMatchScreen;
-        private set => SetProperty(ref _isMatchScreen, value);
+        get => _currentScreen;
+        private set => SetProperty(ref _currentScreen, value);
     }
 
     public bool IsHostLobby
@@ -333,12 +312,7 @@ public partial class MainWindowViewModel : ViewModelBase
         CanStartMatch = false;
         StartLockStatus = "Waiting for exactly four Clients.";
         LobbyClients.Clear();
-
-        CurrentScreenTitle = "Join Match";
-        IsMainMenu = false;
-        IsLobbyScreen = false;
-        IsMatchScreen = false;
-        IsJoinScreen = true;
+        TransitionToScreen(AppScreen.Join);
     }
 
     private async Task JoinHostAsync()
@@ -497,35 +471,41 @@ public partial class MainWindowViewModel : ViewModelBase
     private void ShowLobbyScreen()
     {
         _audioCoordinator.SwitchMusic(GameMusicTrack.Lobby);
-        CurrentScreenTitle = "Lobby";
-        IsMainMenu = false;
-        IsJoinScreen = false;
-        IsMatchScreen = false;
-        IsLobbyScreen = true;
+        TransitionToScreen(AppScreen.Lobby);
     }
 
     private void ShowJoinFailureScreen()
     {
-        CurrentScreenTitle = "Join Match";
-        IsMainMenu = false;
-        IsLobbyScreen = false;
-        IsMatchScreen = false;
-        IsJoinScreen = true;
+        TransitionToScreen(AppScreen.Join);
     }
 
     private void ShowMainMenu()
     {
         _audioCoordinator.SwitchMusic(GameMusicTrack.Lobby);
-        CurrentScreenTitle = "Main Menu";
-        IsJoinScreen = false;
-        IsLobbyScreen = false;
-        IsMatchScreen = false;
         IsHostLobby = false;
-        IsMainMenu = true;
         HostAddressesDisplay = string.Empty;
         HostPortDisplay = string.Empty;
         CanStartMatch = false;
         StartLockStatus = "Waiting for exactly four Clients.";
+        TransitionToScreen(AppScreen.MainMenu);
+    }
+
+    private void TransitionToScreen(AppScreen screen)
+    {
+        CurrentScreen = screen;
+        CurrentScreenTitle = GetScreenTitle(screen);
+    }
+
+    private static string GetScreenTitle(AppScreen screen)
+    {
+        return screen switch
+        {
+            AppScreen.MainMenu => "Main Menu",
+            AppScreen.Join => "Join Match",
+            AppScreen.Lobby => "Lobby",
+            AppScreen.Match => "Match",
+            _ => throw new ArgumentOutOfRangeException(nameof(screen), screen, null),
+        };
     }
 
     private void UpdateLobbyClients(LobbySnapshot snapshot)
@@ -564,11 +544,7 @@ public partial class MainWindowViewModel : ViewModelBase
         _audioCoordinator.HandleMatchSnapshot(snapshot, _lobbySession?.LocalClientId);
         MatchSnapshot = snapshot;
         UpdateMatchHud(snapshot);
-        CurrentScreenTitle = "Match";
-        IsMainMenu = false;
-        IsJoinScreen = false;
-        IsLobbyScreen = false;
-        IsMatchScreen = true;
+        TransitionToScreen(AppScreen.Match);
     }
 
     private void UpdateMatchHud(MatchSnapshot? snapshot)
@@ -605,7 +581,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private async Task SendCurrentInputAsync()
     {
-        if (!IsMatchScreen || _lobbySession is null)
+        if (CurrentScreen != AppScreen.Match || _lobbySession is null)
         {
             return;
         }
