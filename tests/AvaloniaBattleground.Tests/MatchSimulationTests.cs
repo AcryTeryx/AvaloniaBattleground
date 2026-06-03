@@ -276,6 +276,25 @@ public sealed class MatchSimulationTests
     }
 
     [Fact]
+    public void Disconnect_forfeit_completes_match_for_opposing_team()
+    {
+        var match = MatchSimulation.Start(CreateValidLobby());
+
+        match.CompleteMatchByDisconnectForfeit(2);
+        match.Tick();
+
+        Assert.Equal(MatchPhase.MatchComplete, match.Snapshot.Phase);
+        Assert.Equal(Team.Blue, match.Snapshot.MatchWinner);
+        Assert.Equal(0, match.Snapshot.RedRoundWins);
+        Assert.Equal(MatchRules.RoundsToWinMatch, match.Snapshot.BlueRoundWins);
+
+        Assert.NotNull(match.Snapshot.RoundResult);
+        var roundResult = match.Snapshot.RoundResult!;
+        Assert.Equal(Team.Blue, roundResult.WinningTeam);
+        Assert.Equal(RoundWinReason.DisconnectForfeit, roundResult.WinReason);
+    }
+
+    [Fact]
     public void Ranged_single_arrow_shot_damages_enemy_and_removes_projectile_on_hit()
     {
         var match = MatchSimulation.Start(CreateValidLobby());

@@ -152,6 +152,141 @@ public sealed class TcpLobbyNetworkServiceTests
     }
 
     [Fact]
+    public async Task Non_host_disconnect_in_lobby_removes_client_and_recalculates_start_eligibility()
+    {
+        var (host, clients) = await CreateValidFourClientLobbyAsync();
+        try
+        {
+            var disconnectedClientId = clients[0].LocalClientId;
+
+            await clients[0].DisposeAsync();
+
+            var snapshot = await WaitForSnapshotAsync(
+                host,
+                snapshot => snapshot.Clients.Count == 3);
+
+            Assert.DoesNotContain(snapshot.Clients, client => client.ClientId == disconnectedClientId);
+            Assert.False(snapshot.StartEligibility.CanStart);
+            Assert.Contains(LobbyStartLockReason.FullLobbyRequirement, snapshot.StartEligibility.LockReasons);
+
+            foreach (var remainingClient in clients[1..])
+            {
+                var clientSnapshot = await WaitForSnapshotAsync(
+                    remainingClient,
+                    snapshot => snapshot.Clients.Count == 3);
+
+                Assert.DoesNotContain(clientSnapshot.Clients, client => client.ClientId == disconnectedClientId);
+                Assert.False(clientSnapshot.StartEligibility.CanStart);
+            }
+        }
+        finally
+        {
+            await DisposeSessionsAsync(host, clients[1..]);
+        }
+    }
+
+    [Fact]
+    public async Task Host_disconnect_in_lobby_ends_client_session_with_Host_Disconnect_End_feedback()
+    {
+        var networkService = new TcpLobbyNetworkService();
+        var host = await networkService.StartHostAsync("Host Player");
+        var joinResult = await networkService.JoinAsync(
+            new JoinLobbyRequest("127.0.0.1", host.Port, "Joining Player"));
+        Assert.True(joinResult.Succeeded, joinResult.FailureMessage);
+        var client = joinResult.Session!;
+
+        var sessionEndedTask = WaitForSessionEndedAsync(client);
+
+        await host.DisposeAsync();
+        var sessionEnded = await sessionEndedTask;
+
+        Assert.Equal(LobbySessionEndReason.HostDisconnectEnd, sessionEnded.Reason);
+        Assert.Contains("Host Disconnect End", sessionEnded.Message);
+
+        await client.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Host_disconnect_during_match_ends_client_sessions_with_Host_Disconnect_End_feedback()
+    {
+        var (host, clients) = await CreateValidFourClientLobbyAsync();
+        var hostDisposed = false;
+        try
+        {
+            var startResult = await host.StartMatchAsync();
+            Assert.True(startResult.Succeeded, startResult.Message);
+            foreach (var client in clients)
+            {
+                await WaitForMatchSnapshotAsync(client);
+            }
+
+            var sessionEndedTasks = clients
+                .Select(client => WaitForSessionEndedAsync(client))
+                .ToArray();
+
+            await host.DisposeAsync();
+            hostDisposed = true;
+
+            var sessionEndings = await Task.WhenAll(sessionEndedTasks);
+            Assert.All(sessionEndings, sessionEnded =>
+            {
+                Assert.Equal(LobbySessionEndReason.HostDisconnectEnd, sessionEnded.Reason);
+                Assert.Contains("Host Disconnect End", sessionEnded.Message);
+            });
+        }
+        finally
+        {
+            foreach (var client in clients)
+            {
+                await client.DisposeAsync();
+            }
+
+            if (!hostDisposed)
+            {
+                await host.DisposeAsync();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Non_host_disconnect_during_match_triggers_Disconnect_Forfeit_result_for_remaining_clients()
+    {
+        var (host, clients) = await CreateValidFourClientLobbyAsync();
+        try
+        {
+            var startResult = await host.StartMatchAsync();
+            Assert.True(startResult.Succeeded, startResult.Message);
+            var disconnectedClientId = clients[0].LocalClientId;
+
+            await clients[0].DisposeAsync();
+
+            var hostSnapshot = await WaitForMatchSnapshotAsync(
+                host,
+                snapshot => snapshot.Phase == MatchPhase.MatchComplete &&
+                    snapshot.RoundResult?.WinReason == RoundWinReason.DisconnectForfeit);
+
+            Assert.Equal(Team.Blue, hostSnapshot.MatchWinner);
+            Assert.Equal(Team.Red, hostSnapshot.Fighters.Single(fighter =>
+                fighter.ClientId == disconnectedClientId).Team);
+
+            foreach (var remainingClient in clients[1..])
+            {
+                var clientSnapshot = await WaitForMatchSnapshotAsync(
+                    remainingClient,
+                    snapshot => snapshot.Phase == MatchPhase.MatchComplete &&
+                        snapshot.RoundResult?.WinReason == RoundWinReason.DisconnectForfeit);
+
+                Assert.Equal(hostSnapshot.MatchWinner, clientSnapshot.MatchWinner);
+                Assert.Equal(RoundWinReason.DisconnectForfeit, clientSnapshot.RoundResult!.WinReason);
+            }
+        }
+        finally
+        {
+            await DisposeSessionsAsync(host, clients[1..]);
+        }
+    }
+
+    [Fact]
     public async Task Client_input_moves_fighter_through_host_authoritative_snapshot()
     {
         var (host, clients) = await CreateValidFourClientLobbyAsync();
@@ -264,6 +399,38 @@ public sealed class TcpLobbyNetworkServiceTests
         finally
         {
             session.MatchSnapshotChanged -= HandleMatchSnapshotChanged;
+        }
+    }
+
+    private static async Task<LobbySessionEnded> WaitForSessionEndedAsync(
+        ILobbySession session,
+        Predicate<LobbySessionEnded>? predicate = null)
+    {
+        predicate ??= _ => true;
+        var completion = new TaskCompletionSource<LobbySessionEnded>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void HandleSessionEnded(object? sender, LobbySessionEnded sessionEnded)
+        {
+            if (predicate(sessionEnded))
+            {
+                completion.TrySetResult(sessionEnded);
+            }
+        }
+
+        session.SessionEnded += HandleSessionEnded;
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        using var registration = timeout.Token.Register(
+            () => completion.TrySetCanceled(timeout.Token));
+
+        try
+        {
+            return await completion.Task;
+        }
+        finally
+        {
+            session.SessionEnded -= HandleSessionEnded;
         }
     }
 

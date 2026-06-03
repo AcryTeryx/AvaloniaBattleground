@@ -405,6 +405,75 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Shell_leaves_match_flow_with_Host_Disconnect_End_feedback()
+    {
+        var clientSession = new FakeClientLobbySession(
+            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+        var networkService = new RecordingLobbyNetworkService
+        {
+            JoinResult = JoinLobbyResult.Success(clientSession),
+        };
+        var viewModel = new MainWindowViewModel(
+            new LocalProfileStore(CreateProfilePath()),
+            new RecordingApplicationShell(),
+            networkService,
+            new ImmediateViewDispatcher());
+
+        viewModel.JoinMatchCommand.Execute(null);
+        viewModel.JoinAddressInput = "127.0.0.1";
+        viewModel.JoinPortInput = "5000";
+        await viewModel.JoinHostCommand.ExecuteAsync(null);
+        clientSession.PublishMatchSnapshot(
+            MatchSimulation.Start(CreateValidLobbyState()).Snapshot);
+
+        clientSession.PublishSessionEnded(new LobbySessionEnded(
+            LobbySessionEndReason.HostDisconnectEnd,
+            "Host Disconnect End: the host disconnected or closed the game."));
+
+        Assert.False(viewModel.IsMatchScreen);
+        Assert.True(viewModel.IsJoinScreen);
+        Assert.True(viewModel.HasConnectionFeedback);
+        Assert.Contains("Host Disconnect End", viewModel.ConnectionFeedback);
+    }
+
+    [Fact]
+    public async Task Shell_shows_Disconnect_Forfeit_match_result()
+    {
+        var clientSession = new FakeClientLobbySession(
+            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+        var networkService = new RecordingLobbyNetworkService
+        {
+            JoinResult = JoinLobbyResult.Success(clientSession),
+        };
+        var viewModel = new MainWindowViewModel(
+            new LocalProfileStore(CreateProfilePath()),
+            new RecordingApplicationShell(),
+            networkService,
+            new ImmediateViewDispatcher());
+        var snapshot = MatchSimulation.Start(CreateValidLobbyState()).Snapshot with
+        {
+            Phase = MatchPhase.MatchComplete,
+            MatchWinner = Team.Blue,
+            BlueRoundWins = MatchRules.RoundsToWinMatch,
+            RoundResult = new RoundResult(
+                Team.Blue,
+                RoundWinReason.DisconnectForfeit,
+                1),
+        };
+
+        viewModel.JoinMatchCommand.Execute(null);
+        viewModel.JoinAddressInput = "127.0.0.1";
+        viewModel.JoinPortInput = "5000";
+        await viewModel.JoinHostCommand.ExecuteAsync(null);
+        clientSession.PublishMatchSnapshot(snapshot);
+
+        Assert.True(viewModel.IsMatchScreen);
+        Assert.True(viewModel.HasMatchResult);
+        Assert.Contains("Blue wins the match", viewModel.MatchResultDisplay);
+        Assert.Contains("disconnect forfeit", viewModel.MatchResultDisplay);
+    }
+
+    [Fact]
     public void Exit_command_requests_application_exit()
     {
         var shell = new RecordingApplicationShell();
@@ -519,6 +588,8 @@ public sealed class MainWindowViewModelTests
 
         public event EventHandler<MatchSnapshot>? MatchSnapshotChanged;
 
+        public event EventHandler<LobbySessionEnded>? SessionEnded;
+
         public int LocalClientId { get; } = localClientId;
 
         public LobbySnapshot Snapshot { get; private set; } = snapshot;
@@ -566,6 +637,11 @@ public sealed class MainWindowViewModelTests
         {
             MatchSnapshot = snapshot;
             MatchSnapshotChanged?.Invoke(this, snapshot);
+        }
+
+        public void PublishSessionEnded(LobbySessionEnded sessionEnded)
+        {
+            SessionEnded?.Invoke(this, sessionEnded);
         }
     }
 

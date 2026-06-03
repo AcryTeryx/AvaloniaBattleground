@@ -157,6 +157,7 @@ public enum RoundWinReason
 {
     TeamElimination,
     HealthTiebreaker,
+    DisconnectForfeit,
 }
 
 public sealed record RoundResult(
@@ -382,6 +383,42 @@ public sealed class MatchSimulation
                     ? fighter with { Position = ClampToArena(position) }
                     : fighter)
                 .ToArray(),
+        };
+    }
+
+    public void CompleteMatchByDisconnectForfeit(int disconnectedClientId)
+    {
+        if (Snapshot.Phase == MatchPhase.MatchComplete)
+        {
+            return;
+        }
+
+        var disconnectedFighter = Snapshot.Fighters.SingleOrDefault(fighter =>
+            fighter.ClientId == disconnectedClientId);
+        if (disconnectedFighter is null)
+        {
+            return;
+        }
+
+        var winningTeam = disconnectedFighter.Team == Team.Red
+            ? Team.Blue
+            : Team.Red;
+
+        Snapshot = Snapshot with
+        {
+            Projectiles = [],
+            Phase = MatchPhase.MatchComplete,
+            RoundResult = new RoundResult(
+                winningTeam,
+                RoundWinReason.DisconnectForfeit,
+                Snapshot.RoundNumber),
+            RedRoundWins = winningTeam == Team.Red
+                ? MatchRules.RoundsToWinMatch
+                : Snapshot.RedRoundWins,
+            BlueRoundWins = winningTeam == Team.Blue
+                ? MatchRules.RoundsToWinMatch
+                : Snapshot.BlueRoundWins,
+            MatchWinner = winningTeam,
         };
     }
 
