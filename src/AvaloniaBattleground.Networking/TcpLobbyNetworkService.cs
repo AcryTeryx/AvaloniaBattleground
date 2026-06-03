@@ -8,7 +8,6 @@ namespace AvaloniaBattleground.Networking;
 
 public sealed class TcpLobbyNetworkService : ILobbyNetworkService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly TimeSpan DefaultJoinTimeout = TimeSpan.FromSeconds(5);
 
     public Task<IHostLobbySession> StartHostAsync(
@@ -60,7 +59,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             var stream = tcpClient.GetStream();
             var reader = new WireMessageReader(stream);
 
-            await WriteWireMessageAsync(
+            await WireMessageWriter.WriteAsync(
                 stream,
                 WireMessage.JoinRequest(
                     request.ProtocolVersion,
@@ -165,67 +164,13 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             : JoinFailureReason.ConnectionFailed;
     }
 
-    private static async Task WriteWireMessageAsync(
-        NetworkStream stream,
-        WireMessage message,
-        CancellationToken cancellationToken)
-    {
-        await JsonSerializer.SerializeAsync(stream, message, JsonOptions, cancellationToken);
-        await stream.WriteAsync("\n"u8.ToArray(), cancellationToken);
-        await stream.FlushAsync(cancellationToken);
-    }
-
-    // Reads newline-delimited JSON wire messages off a single connection. The
-    // read buffer is retained between calls so bytes that arrive after a
-    // message terminator (for example, a lobby snapshot the host sends right
-    // after the join response) are not lost. One reader must be reused for the
-    // whole lifetime of a connection.
-    private sealed class WireMessageReader(NetworkStream stream)
-    {
-        private readonly byte[] _readBuffer = new byte[4096];
-        private readonly MemoryStream _messageBuffer = new();
-        private int _bufferStart;
-        private int _bufferEnd;
-
-        public async Task<WireMessage?> ReadAsync(CancellationToken cancellationToken)
-        {
-            _messageBuffer.SetLength(0);
-
-            while (true)
-            {
-                while (_bufferStart < _bufferEnd)
-                {
-                    var current = _readBuffer[_bufferStart++];
-                    if (current == (byte)'\n')
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        return JsonSerializer.Deserialize<WireMessage>(
-                            _messageBuffer.ToArray(),
-                            JsonOptions);
-                    }
-
-                    _messageBuffer.WriteByte(current);
-                }
-
-                _bufferStart = 0;
-                _bufferEnd = await stream.ReadAsync(_readBuffer, cancellationToken);
-                if (_bufferEnd == 0)
-                {
-                    return _messageBuffer.Length == 0
-                        ? null
-                        : throw new JsonException("Partial wire message.");
-                }
-            }
-        }
-    }
-
     private sealed class HostLobbySession : IHostLobbySession
     {
         private readonly CancellationTokenSource _stopping = new();
         private readonly List<ConnectedClient> _connectedClients = [];
+        private readonly IMatchHost _matchHost = new MatchHost();
         private readonly TcpListener _listener;
         private readonly object _syncRoot = new();
-        private MatchSimulation? _matchSimulation;
         private int _nextClientId = 2;
         private LobbyState _lobby;
 
@@ -276,7 +221,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             {
                 lock (_syncRoot)
                 {
-                    return _matchSimulation?.Snapshot;
+                    return _matchHost.Snapshot;
                 }
             }
         }
@@ -284,32 +229,24 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
         public async Task<StartMatchResult> StartMatchAsync(CancellationToken cancellationToken = default)
         {
             MatchSnapshot snapshot;
+            StartMatchResult result;
 
             lock (_syncRoot)
             {
-                if (_matchSimulation is not null)
+                result = _matchHost.TryStart(_lobby);
+                if (!result.Succeeded)
                 {
-                    return StartMatchResult.Failure(
-                        StartMatchFailureReason.AlreadyStarted,
-                        "The Match has already started.");
+                    return result;
                 }
 
-                if (!_lobby.StartEligibility.CanStart)
-                {
-                    return StartMatchResult.Failure(
-                        StartMatchFailureReason.LobbyNotReady,
-                        "The Lobby must have exactly four Clients and valid Team roles.");
-                }
-
-                _matchSimulation = MatchSimulation.Start(_lobby);
-                snapshot = _matchSimulation.Snapshot;
+                snapshot = result.MatchSnapshot!;
             }
 
             MatchSnapshotChanged?.Invoke(this, snapshot);
             await BroadcastMatchSnapshotAsync(snapshot, cancellationToken);
             _ = RunMatchLoopAsync();
 
-            return StartMatchResult.Success(snapshot);
+            return result;
         }
 
         public async Task<LobbySelectionResult> SelectTeamRoleAsync(
@@ -392,7 +329,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
 
                 if (request.ProtocolVersion != LobbyProtocol.CurrentVersion)
                 {
-                    await WriteWireMessageAsync(
+                    await WireMessageWriter.WriteAsync(
                         stream,
                         WireMessage.JoinRejected(
                             JoinFailureReason.ProtocolVersionMismatch,
@@ -407,7 +344,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                     LocalProfileStore.NormalizeDisplayName(request.DisplayName));
                 var snapshot = Snapshot;
 
-                await WriteWireMessageAsync(
+                await WireMessageWriter.WriteAsync(
                     stream,
                     WireMessage.JoinAccepted(clientId, snapshot.Clients),
                     _stopping.Token);
@@ -472,7 +409,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
 
                         if (result.Succeeded)
                         {
-                            await WriteWireMessageAsync(
+                            await WireMessageWriter.WriteAsync(
                                 tcpClient.GetStream(),
                                 WireMessage.SelectionAccepted(
                                     message.RequestId.Value,
@@ -481,7 +418,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                         }
                         else
                         {
-                            await WriteWireMessageAsync(
+                            await WireMessageWriter.WriteAsync(
                                 tcpClient.GetStream(),
                                 WireMessage.SelectionRejected(
                                     message.RequestId.Value,
@@ -537,7 +474,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 disconnectedClient = _connectedClients[connectedClientIndex];
                 _connectedClients.RemoveAt(connectedClientIndex);
 
-                if (_matchSimulation is null)
+                if (!_matchHost.IsRunning)
                 {
                     _lobby = new LobbyState(
                         _lobby.Clients
@@ -547,8 +484,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 }
                 else
                 {
-                    _matchSimulation.CompleteMatchByDisconnectForfeit(clientId);
-                    matchSnapshot = _matchSimulation.Snapshot;
+                    matchSnapshot = _matchHost.HandleClientDisconnected(clientId);
                 }
             }
 
@@ -580,7 +516,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
         {
             lock (_syncRoot)
             {
-                _matchSimulation?.SetInput(clientId, input);
+                _matchHost.SetInput(clientId, input);
             }
         }
 
@@ -601,8 +537,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                     MatchSnapshot? snapshot;
                     lock (_syncRoot)
                     {
-                        _matchSimulation?.Tick();
-                        snapshot = _matchSimulation?.Snapshot;
+                        snapshot = _matchHost.Tick();
                     }
 
                     if (snapshot is null)
@@ -678,7 +613,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             {
                 try
                 {
-                    await WriteWireMessageAsync(
+                    await WireMessageWriter.WriteAsync(
                         connectedClient.TcpClient.GetStream(),
                         WireMessage.LobbySnapshot(snapshot.Clients),
                         _stopping.Token);
@@ -716,7 +651,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             {
                 try
                 {
-                    await WriteWireMessageAsync(
+                    await WireMessageWriter.WriteAsync(
                         connectedClient.TcpClient.GetStream(),
                         WireMessage.MatchSnapshotMessage(snapshot),
                         cancellationToken);
@@ -752,7 +687,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             {
                 try
                 {
-                    await WriteWireMessageAsync(
+                    await WireMessageWriter.WriteAsync(
                         connectedClient.TcpClient.GetStream(),
                         WireMessage.SessionEnded(sessionEnded),
                         CancellationToken.None);
@@ -832,7 +767,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 await _writeLock.WaitAsync(cancellationToken);
                 try
                 {
-                    await WriteWireMessageAsync(
+                    await WireMessageWriter.WriteAsync(
                         _tcpClient.GetStream(),
                         WireMessage.SelectionRequest(requestId, team, role),
                         cancellationToken);
@@ -893,7 +828,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 await _writeLock.WaitAsync();
                 try
                 {
-                    await WriteWireMessageAsync(
+                    await WireMessageWriter.WriteAsync(
                         _tcpClient.GetStream(),
                         WireMessage.ClientDisconnected(),
                         CancellationToken.None);
@@ -927,7 +862,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 await _writeLock.WaitAsync(cancellationToken);
                 lockTaken = true;
 
-                await WriteWireMessageAsync(
+                await WireMessageWriter.WriteAsync(
                     _tcpClient.GetStream(),
                     WireMessage.PlayerInputMessage(input),
                     cancellationToken);
@@ -1101,140 +1036,6 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
     }
 
     private sealed record ConnectedClient(int ClientId, TcpClient TcpClient);
-
-    private static class WireMessageTypes
-    {
-        public const string JoinAccepted = nameof(JoinAccepted);
-        public const string JoinRejected = nameof(JoinRejected);
-        public const string JoinRequest = nameof(JoinRequest);
-        public const string ClientDisconnected = nameof(ClientDisconnected);
-        public const string LobbySnapshot = nameof(LobbySnapshot);
-        public const string MatchSnapshot = nameof(MatchSnapshot);
-        public const string PlayerInput = nameof(PlayerInput);
-        public const string SelectionAccepted = nameof(SelectionAccepted);
-        public const string SelectionRejected = nameof(SelectionRejected);
-        public const string SelectionRequest = nameof(SelectionRequest);
-        public const string SessionEnded = nameof(SessionEnded);
-    }
-
-    private sealed record WireMessage(
-        string MessageType,
-        int ProtocolVersion,
-        string? DisplayName = null,
-        int? ClientId = null,
-        Guid? RequestId = null,
-        string? FailureReason = null,
-        string? FailureMessage = null,
-        Team? Team = null,
-        FighterRole? Role = null,
-        PlayerInput? PlayerInput = null,
-        MatchSnapshot? MatchSnapshot = null,
-        IReadOnlyList<LobbyClient>? Clients = null)
-    {
-        public static WireMessage JoinRequest(int protocolVersion, string displayName)
-        {
-            return new WireMessage(
-                WireMessageTypes.JoinRequest,
-                protocolVersion,
-                DisplayName: displayName);
-        }
-
-        public static WireMessage JoinAccepted(
-            int clientId,
-            IReadOnlyList<LobbyClient> clients)
-        {
-            return new WireMessage(
-                WireMessageTypes.JoinAccepted,
-                LobbyProtocol.CurrentVersion,
-                ClientId: clientId,
-                Clients: clients);
-        }
-
-        public static WireMessage JoinRejected(
-            JoinFailureReason failureReason,
-            string failureMessage)
-        {
-            return new WireMessage(
-                WireMessageTypes.JoinRejected,
-                LobbyProtocol.CurrentVersion,
-                FailureReason: failureReason.ToString(),
-                FailureMessage: failureMessage);
-        }
-
-        public static WireMessage ClientDisconnected()
-        {
-            return new WireMessage(
-                WireMessageTypes.ClientDisconnected,
-                LobbyProtocol.CurrentVersion);
-        }
-
-        public static WireMessage LobbySnapshot(IReadOnlyList<LobbyClient> clients)
-        {
-            return new WireMessage(
-                WireMessageTypes.LobbySnapshot,
-                LobbyProtocol.CurrentVersion,
-                Clients: clients);
-        }
-
-        public static WireMessage SelectionRequest(Guid requestId, Team team, FighterRole role)
-        {
-            return new WireMessage(
-                WireMessageTypes.SelectionRequest,
-                LobbyProtocol.CurrentVersion,
-                RequestId: requestId,
-                Team: team,
-                Role: role);
-        }
-
-        public static WireMessage SelectionAccepted(
-            Guid requestId,
-            IReadOnlyList<LobbyClient> clients)
-        {
-            return new WireMessage(
-                WireMessageTypes.SelectionAccepted,
-                LobbyProtocol.CurrentVersion,
-                RequestId: requestId,
-                Clients: clients);
-        }
-
-        public static WireMessage SelectionRejected(
-            Guid requestId,
-            LobbySelectionFailureReason failureReason,
-            string failureMessage)
-        {
-            return new WireMessage(
-                WireMessageTypes.SelectionRejected,
-                LobbyProtocol.CurrentVersion,
-                RequestId: requestId,
-                FailureReason: failureReason.ToString(),
-                FailureMessage: failureMessage);
-        }
-
-        public static WireMessage PlayerInputMessage(PlayerInput playerInput)
-        {
-            return new WireMessage(
-                WireMessageTypes.PlayerInput,
-                LobbyProtocol.CurrentVersion,
-                PlayerInput: playerInput);
-        }
-
-        public static WireMessage MatchSnapshotMessage(MatchSnapshot matchSnapshot)
-        {
-            return new WireMessage(
-                WireMessageTypes.MatchSnapshot,
-                LobbyProtocol.CurrentVersion,
-                MatchSnapshot: matchSnapshot);
-        }
-
-        public static WireMessage SessionEnded(LobbySessionEnded sessionEnded)
-        {
-            return new WireMessage(
-                WireMessageTypes.SessionEnded,
-                LobbyProtocol.CurrentVersion,
-                FailureReason: sessionEnded.Reason.ToString(),
-                FailureMessage: sessionEnded.Message);
-        }
-    }
 
     private static LobbySelectionFailureReason MapSelectionFailureReason(string? failureReason)
     {
