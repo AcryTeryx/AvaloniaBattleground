@@ -37,6 +37,9 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    // Match controls reuse letter and arrow keys, so they must never be claimed
+    // while a text field (display name, host address, port) has focus. Marking
+    // such a KeyDown handled would suppress the X11 TextInput event entirely.
     private bool IsTextInputFocused()
     {
         return FocusManager?.GetFocusedElement() is TextBox;
