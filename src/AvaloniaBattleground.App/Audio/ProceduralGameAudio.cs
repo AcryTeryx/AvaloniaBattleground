@@ -15,6 +15,7 @@ public sealed class ProceduralGameAudio : IGameAudio
     private readonly ProceduralAudioAssets _assets = new();
     private readonly PlatformAudioPlayer _player = new();
     private readonly Dictionary<GameAudioCue, DateTimeOffset> _lastCueStartedAt = [];
+    private readonly CancellationTokenSource _lifetime = new();
     private readonly object _syncRoot = new();
     private CancellationTokenSource? _musicStopping;
     private GameMusicTrack? _currentMusicTrack;
@@ -26,14 +27,14 @@ public sealed class ProceduralGameAudio : IGameAudio
 
         lock (_syncRoot)
         {
-            if (_currentMusicTrack == track)
+            if (_currentMusicTrack == track || _lifetime.IsCancellationRequested)
             {
                 return;
             }
 
             _musicStopping?.Cancel();
             _musicStopping?.Dispose();
-            _musicStopping = new CancellationTokenSource();
+            _musicStopping = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
             _currentMusicTrack = track;
             musicStopping = _musicStopping;
             musicPath = _assets.GetMusicPath(track);
@@ -48,6 +49,11 @@ public sealed class ProceduralGameAudio : IGameAudio
 
         lock (_syncRoot)
         {
+            if (_lifetime.IsCancellationRequested)
+            {
+                return;
+            }
+
             var now = DateTimeOffset.UtcNow;
             if (_lastCueStartedAt.TryGetValue(cue, out var lastStartedAt) &&
                 now - lastStartedAt < CueThrottle)
@@ -59,7 +65,19 @@ public sealed class ProceduralGameAudio : IGameAudio
             cuePath = _assets.GetCuePath(cue);
         }
 
-        _ = Task.Run(() => _player.PlayAsync(cuePath, CancellationToken.None));
+        _ = Task.Run(() => _player.PlayAsync(cuePath, _lifetime.Token));
+    }
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+
+        lock (_syncRoot)
+        {
+            _musicStopping?.Dispose();
+            _musicStopping = null;
+        }
     }
 
     private async Task RunMusicLoopAsync(string musicPath, CancellationToken cancellationToken)
@@ -82,35 +100,51 @@ public sealed class ProceduralGameAudio : IGameAudio
     private sealed class ProceduralAudioAssets
     {
         private const int SampleRate = 44100;
-        private readonly string _assetDirectory;
+        private readonly string _bundledDirectory;
+        private readonly string _proceduralDirectory;
 
         public ProceduralAudioAssets()
         {
-            _assetDirectory = Path.Combine(
+            _bundledDirectory = Path.Combine(
+                AppContext.BaseDirectory,
+                "Assets",
+                "Audio");
+            _proceduralDirectory = Path.Combine(
                 Path.GetTempPath(),
                 "AvaloniaBattleground",
                 "procedural-audio-v1");
-            Directory.CreateDirectory(_assetDirectory);
+            Directory.CreateDirectory(_proceduralDirectory);
             EnsureAssets();
         }
 
         public string GetMusicPath(GameMusicTrack track)
         {
-            return Path.Combine(_assetDirectory, $"music-{track}.wav");
+            return ResolveAssetPath($"music-{track}.wav");
         }
 
         public string GetCuePath(GameAudioCue cue)
         {
-            return Path.Combine(_assetDirectory, $"cue-{cue}.wav");
+            return ResolveAssetPath($"cue-{cue}.wav");
+        }
+
+        private string ResolveAssetPath(string fileName)
+        {
+            var bundledPath = Path.Combine(_bundledDirectory, fileName);
+            if (File.Exists(bundledPath))
+            {
+                return bundledPath;
+            }
+
+            return Path.Combine(_proceduralDirectory, fileName);
         }
 
         private void EnsureAssets()
         {
             WriteWavIfMissing(
-                GetMusicPath(GameMusicTrack.Lobby),
+                $"music-{GameMusicTrack.Lobby}.wav",
                 CreateMusicLoop([196, 246.94, 293.66, 246.94], 0.18, 4.0));
             WriteWavIfMissing(
-                GetMusicPath(GameMusicTrack.Battle),
+                $"music-{GameMusicTrack.Battle}.wav",
                 CreateMusicLoop([220, 277.18, 329.63, 392], 0.24, 3.2));
 
             WriteCue(GameAudioCue.LobbyClientJoined, [(523.25, 0.08), (659.25, 0.10)]);
@@ -128,7 +162,7 @@ public sealed class ProceduralGameAudio : IGameAudio
 
         private void WriteCue(GameAudioCue cue, IReadOnlyList<(double Frequency, double DurationSeconds)> tones)
         {
-            WriteWavIfMissing(GetCuePath(cue), CreateToneSequence(tones, 0.35));
+            WriteWavIfMissing($"cue-{cue}.wav", CreateToneSequence(tones, 0.35));
         }
 
         private static short[] CreateMusicLoop(
@@ -185,14 +219,20 @@ public sealed class ProceduralGameAudio : IGameAudio
             return (short)(Math.Clamp(value, -1, 1) * short.MaxValue);
         }
 
-        private static void WriteWavIfMissing(string path, short[] samples)
+        private void WriteWavIfMissing(string fileName, short[] samples)
         {
-            if (File.Exists(path))
+            if (File.Exists(Path.Combine(_bundledDirectory, fileName)))
             {
                 return;
             }
 
-            using var file = File.Create(path);
+            var proceduralPath = Path.Combine(_proceduralDirectory, fileName);
+            if (File.Exists(proceduralPath))
+            {
+                return;
+            }
+
+            using var file = File.Create(proceduralPath);
             using var writer = new BinaryWriter(file);
             var dataSize = samples.Length * sizeof(short);
 

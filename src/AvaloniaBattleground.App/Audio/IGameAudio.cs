@@ -1,3 +1,5 @@
+using System;
+
 namespace AvaloniaBattleground.App.Audio;
 
 public enum GameMusicTrack
@@ -21,7 +23,7 @@ public enum GameAudioCue
     MatchComplete,
 }
 
-public interface IGameAudio
+public interface IGameAudio : IDisposable
 {
     void SwitchMusic(GameMusicTrack track);
 
@@ -41,6 +43,10 @@ public sealed class SilentGameAudio : IGameAudio
     }
 
     public void PlayCue(GameAudioCue cue)
+    {
+    }
+
+    public void Dispose()
     {
     }
 }

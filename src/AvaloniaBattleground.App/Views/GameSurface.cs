@@ -11,22 +11,22 @@ public sealed class GameSurface : Control
     public static readonly StyledProperty<MatchSnapshot?> MatchSnapshotProperty =
         AvaloniaProperty.Register<GameSurface, MatchSnapshot?>(nameof(MatchSnapshot));
 
-    private static readonly IBrush BackgroundBrush = new SolidColorBrush(Color.Parse("#101418"));
-    private static readonly IBrush ArenaBrush = new SolidColorBrush(Color.Parse("#182026"));
-    private static readonly Pen ArenaPen = new(new SolidColorBrush(Color.Parse("#AEB7C2")), 2);
-    private static readonly Pen AimPen = new(new SolidColorBrush(Color.Parse("#F4F7FA")), 2);
-    private static readonly Pen FighterPen = new(new SolidColorBrush(Color.Parse("#101418")), 2);
-    private static readonly IBrush RedTeamBrush = new SolidColorBrush(Color.Parse("#D95858"));
-    private static readonly IBrush BlueTeamBrush = new SolidColorBrush(Color.Parse("#4E8FE8"));
-    private static readonly IBrush HealthBackBrush = new SolidColorBrush(Color.Parse("#2B3036"));
-    private static readonly IBrush HealthBrush = new SolidColorBrush(Color.Parse("#62D26F"));
-    private static readonly IBrush CooldownReadyBrush = new SolidColorBrush(Color.Parse("#F1C75B"));
-    private static readonly IBrush CooldownBackBrush = new SolidColorBrush(Color.Parse("#4B5560"));
-    private static readonly IBrush ProjectileBrush = new SolidColorBrush(Color.Parse("#F4D47B"));
-    private static readonly IBrush HitBrush = new SolidColorBrush(Color.FromArgb(120, 255, 255, 255));
-    private static readonly IBrush DeathBrush = new SolidColorBrush(Color.FromArgb(140, 255, 80, 80));
-    private static readonly Pen MeleeEffectPen = new(new SolidColorBrush(Color.FromArgb(180, 255, 220, 130)), 3);
-    private static readonly Pen RangedEffectPen = new(new SolidColorBrush(Color.FromArgb(170, 140, 210, 255)), 2);
+    private static readonly IBrush BackgroundBrush = new SolidColorBrush(Color.Parse("#010A13"));
+    private static readonly IBrush ArenaBrush = new SolidColorBrush(Color.Parse("#0A1428"));
+    private static readonly Pen ArenaPen = new(new SolidColorBrush(Color.Parse("#785A28")), 2);
+    private static readonly Pen AimPen = new(new SolidColorBrush(Color.Parse("#F0E6D2")), 2);
+    private static readonly Pen FighterPen = new(new SolidColorBrush(Color.Parse("#010A13")), 2);
+    private static readonly IBrush RedTeamBrush = new SolidColorBrush(Color.Parse("#C8414B"));
+    private static readonly IBrush BlueTeamBrush = new SolidColorBrush(Color.Parse("#0A96AA"));
+    private static readonly IBrush HealthBackBrush = new SolidColorBrush(Color.Parse("#1E2328"));
+    private static readonly IBrush HealthBrush = new SolidColorBrush(Color.Parse("#5B9A4A"));
+    private static readonly IBrush CooldownReadyBrush = new SolidColorBrush(Color.Parse("#C89B3C"));
+    private static readonly IBrush CooldownBackBrush = new SolidColorBrush(Color.Parse("#1E2328"));
+    private static readonly IBrush ProjectileBrush = new SolidColorBrush(Color.Parse("#F0E6D2"));
+    private static readonly IBrush HitBrush = new SolidColorBrush(Color.FromArgb(120, 240, 230, 210));
+    private static readonly IBrush DeathBrush = new SolidColorBrush(Color.FromArgb(140, 200, 65, 75));
+    private static readonly Pen MeleeEffectPen = new(new SolidColorBrush(Color.FromArgb(180, 200, 155, 60)), 3);
+    private static readonly Pen RangedEffectPen = new(new SolidColorBrush(Color.FromArgb(170, 10, 150, 170)), 2);
 
     public MatchSnapshot? MatchSnapshot
     {

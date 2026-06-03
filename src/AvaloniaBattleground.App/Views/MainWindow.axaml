@@ -13,277 +13,342 @@
         Width="900"
         Height="620"
         MinWidth="640"
-        MinHeight="520">
+        MinHeight="520"
+        Background="{StaticResource BgPrimaryBrush}"
+        FontFamily="Inter">
 
     <Design.DataContext>
         <vm:MainWindowViewModel/>
     </Design.DataContext>
 
-    <Grid Margin="36" RowDefinitions="Auto,*" RowSpacing="32">
+    <Grid Margin="32" RowDefinitions="Auto,Auto,*">
+        <!-- Header -->
         <Grid ColumnDefinitions="*,Auto">
-            <StackPanel Spacing="4">
-                <TextBlock Text="Avalonia Battleground"
-                           FontSize="32"
-                           FontWeight="SemiBold"/>
+            <StackPanel Spacing="2">
+                <TextBlock Text="AVALONIA BATTLEGROUND"
+                           FontSize="26"
+                           FontWeight="Bold"
+                           Classes="Gold"
+                           LetterSpacing="1.5"/>
                 <TextBlock Text="{Binding CurrentScreenTitle}"
-                           FontSize="16"
-                           Opacity="0.72"/>
+                           FontSize="14"
+                           Classes="Secondary"/>
             </StackPanel>
 
             <Border Grid.Column="1"
-                    BorderBrush="#55818A96"
-                    BorderThickness="1"
-                    CornerRadius="6"
-                    Padding="16,10"
+                    Classes="CardBorder"
+                    Padding="14,8"
                     VerticalAlignment="Center">
                 <StackPanel Spacing="2">
-                    <TextBlock Text="Local Display Name"
-                               FontSize="12"
-                               Opacity="0.72"/>
+                    <TextBlock Text="DISPLAY NAME"
+                               FontSize="10"
+                               Classes="Secondary"
+                               LetterSpacing="0.8"/>
                     <TextBlock Text="{Binding CurrentDisplayName}"
-                               FontSize="18"
+                               FontSize="16"
                                FontWeight="SemiBold"/>
                 </StackPanel>
             </Border>
         </Grid>
 
-        <Grid Grid.Row="1">
+        <!-- Gold divider under header -->
+        <Border Grid.Row="1" Classes="GoldDivider" Margin="0,12,0,16"/>
+
+        <!-- Content area -->
+        <Grid Grid.Row="2">
+
+            <!-- Main Menu -->
             <Grid IsVisible="{Binding CurrentScreen, Converter={x:Static views:EnumEqualsConverter.Instance}, ConverterParameter={x:Static vm:AppScreen.MainMenu}}">
-                <StackPanel Width="360"
-                            Spacing="16"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center">
-                    <TextBlock Text="Main Menu"
-                               FontSize="24"
-                               FontWeight="SemiBold"
-                               HorizontalAlignment="Center"/>
+                <Border Classes="PanelBorder"
+                        Width="380"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Padding="28,24">
+                    <StackPanel Spacing="18">
+                        <TextBlock Text="MAIN MENU"
+                                   FontSize="20"
+                                   FontWeight="Bold"
+                                   Classes="Gold"
+                                   HorizontalAlignment="Center"
+                                   LetterSpacing="1"/>
 
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="Local Display Name"/>
-                        <TextBox Text="{Binding DisplayNameInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 MinHeight="42"
-                                 PlaceholderText="Player"/>
-                        <Button Content="Save Name"
-                                Command="{Binding SaveDisplayNameCommand}"
-                                HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Center"/>
+                        <Border Classes="GoldDivider" Margin="0,0,0,4"/>
+
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="LOCAL DISPLAY NAME"
+                                       FontSize="11"
+                                       Classes="Secondary"
+                                       LetterSpacing="0.5"/>
+                            <TextBox Text="{Binding DisplayNameInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="Player"/>
+                            <Button Content="Save Name"
+                                    Command="{Binding SaveDisplayNameCommand}"
+                                    HorizontalAlignment="Stretch"/>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding ConnectionFeedback}"
+                                   IsVisible="{Binding HasConnectionFeedback}"
+                                   Classes="Error"
+                                   TextWrapping="Wrap"
+                                   FontSize="13"/>
+
+                        <StackPanel Spacing="10" Margin="0,6,0,0">
+                            <Button Content="Host Match"
+                                    Command="{Binding HostMatchCommand}"
+                                    HorizontalAlignment="Stretch"/>
+                            <Button Content="Join Match"
+                                    Command="{Binding JoinMatchCommand}"
+                                    HorizontalAlignment="Stretch"/>
+                            <Button Content="Exit"
+                                    Command="{Binding ExitCommand}"
+                                    HorizontalAlignment="Stretch"
+                                    Opacity="0.7"/>
+                        </StackPanel>
                     </StackPanel>
-
-                    <TextBlock Text="{Binding ConnectionFeedback}"
-                               IsVisible="{Binding HasConnectionFeedback}"
-                               Foreground="#B3261E"
-                               TextWrapping="Wrap"/>
-
-                    <Button Content="Host Match"
-                            Command="{Binding HostMatchCommand}"
-                            MinHeight="42"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Center"/>
-                    <Button Content="Join Match"
-                            Command="{Binding JoinMatchCommand}"
-                            MinHeight="42"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Center"/>
-                    <Button Content="Exit"
-                            Command="{Binding ExitCommand}"
-                            MinHeight="42"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Center"/>
-                </StackPanel>
+                </Border>
             </Grid>
 
+            <!-- Join Screen -->
             <Grid IsVisible="{Binding CurrentScreen, Converter={x:Static views:EnumEqualsConverter.Instance}, ConverterParameter={x:Static vm:AppScreen.Join}}">
-                <StackPanel Width="420"
-                            Spacing="16"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center">
-                    <TextBlock Text="Join Match"
-                               FontSize="24"
-                               FontWeight="SemiBold"
-                               HorizontalAlignment="Center"/>
+                <Border Classes="PanelBorder"
+                        Width="420"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Padding="28,24">
+                    <StackPanel Spacing="18">
+                        <TextBlock Text="JOIN MATCH"
+                                   FontSize="20"
+                                   FontWeight="Bold"
+                                   Classes="Gold"
+                                   HorizontalAlignment="Center"
+                                   LetterSpacing="1"/>
 
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="Host IP Address"/>
-                        <TextBox Text="{Binding JoinAddressInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 MinHeight="42"
-                                 PlaceholderText="127.0.0.1"/>
+                        <Border Classes="GoldDivider" Margin="0,0,0,4"/>
+
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="HOST IP ADDRESS"
+                                       FontSize="11"
+                                       Classes="Secondary"
+                                       LetterSpacing="0.5"/>
+                            <TextBox Text="{Binding JoinAddressInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="127.0.0.1"/>
+                        </StackPanel>
+
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="PORT"
+                                       FontSize="11"
+                                       Classes="Secondary"
+                                       LetterSpacing="0.5"/>
+                            <TextBox Text="{Binding JoinPortInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     PlaceholderText="5000"/>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding ConnectionFeedback}"
+                                   IsVisible="{Binding HasConnectionFeedback}"
+                                   Classes="Error"
+                                   TextWrapping="Wrap"
+                                   FontSize="13"/>
+
+                        <StackPanel Spacing="10" Margin="0,6,0,0">
+                            <Button Content="Connect"
+                                    Command="{Binding JoinHostCommand}"
+                                    HorizontalAlignment="Stretch"/>
+                            <Button Content="Back"
+                                    Command="{Binding BackToMainMenuCommand}"
+                                    HorizontalAlignment="Stretch"
+                                    Opacity="0.7"/>
+                        </StackPanel>
                     </StackPanel>
-
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="Port"/>
-                        <TextBox Text="{Binding JoinPortInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 MinHeight="42"
-                                 PlaceholderText="5000"/>
-                    </StackPanel>
-
-                    <TextBlock Text="{Binding ConnectionFeedback}"
-                               IsVisible="{Binding HasConnectionFeedback}"
-                               Foreground="#B3261E"
-                               TextWrapping="Wrap"/>
-
-                    <Button Content="Connect"
-                            Command="{Binding JoinHostCommand}"
-                            MinHeight="42"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Center"/>
-                    <Button Content="Back"
-                            Command="{Binding BackToMainMenuCommand}"
-                            MinHeight="42"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Center"/>
-                </StackPanel>
+                </Border>
             </Grid>
 
+            <!-- Lobby -->
             <Grid IsVisible="{Binding CurrentScreen, Converter={x:Static views:EnumEqualsConverter.Instance}, ConverterParameter={x:Static vm:AppScreen.Lobby}}">
-                <StackPanel Width="520"
-                            Spacing="18"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center">
-                    <TextBlock Text="Lobby"
-                               FontSize="24"
-                               FontWeight="SemiBold"
-                               HorizontalAlignment="Center"/>
+                <Border Classes="PanelBorder"
+                        Width="540"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Padding="28,24">
+                    <StackPanel Spacing="16">
+                        <TextBlock Text="LOBBY"
+                                   FontSize="20"
+                                   FontWeight="Bold"
+                                   Classes="Gold"
+                                   HorizontalAlignment="Center"
+                                   LetterSpacing="1"/>
 
-                    <Border IsVisible="{Binding IsHostLobby}"
-                            BorderBrush="#55818A96"
-                            BorderThickness="1"
-                            CornerRadius="6"
-                            Padding="16">
-                        <Grid RowDefinitions="Auto,Auto"
-                              ColumnDefinitions="Auto,*"
-                              RowSpacing="8"
-                              ColumnSpacing="16">
-                            <TextBlock Text="Address"
-                                       Opacity="0.72"/>
-                            <TextBlock Grid.Column="1"
-                                       Text="{Binding HostAddressesDisplay}"
-                                       TextWrapping="Wrap"/>
-                            <TextBlock Grid.Row="1"
-                                       Text="Port"
-                                       Opacity="0.72"/>
-                            <TextBlock Grid.Row="1"
-                                       Grid.Column="1"
-                                       Text="{Binding HostPortDisplay}"/>
-                        </Grid>
-                    </Border>
+                        <Border Classes="GoldDivider" Margin="0,0,0,4"/>
 
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="Connected Clients"
-                                   FontWeight="SemiBold"/>
-                        <ItemsControl ItemsSource="{Binding LobbyClients}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:LobbyClientItemViewModel">
-                                    <Border BorderBrush="#33818A96"
-                                            BorderThickness="1"
-                                            CornerRadius="6"
-                                            Padding="12"
-                                            Margin="0,0,0,8">
-                                        <Grid ColumnDefinitions="*,Auto"
-                                              ColumnSpacing="12">
-                                            <StackPanel Spacing="4">
-                                                <TextBlock Text="{Binding DisplayName}"
-                                                           FontSize="16"/>
-                                                <StackPanel Orientation="Horizontal"
-                                                            Spacing="12">
-                                                    <TextBlock Text="{Binding TeamDisplay}"
-                                                               Opacity="0.72"/>
-                                                    <TextBlock Text="{Binding RoleDisplay}"
-                                                               Opacity="0.72"/>
+                        <!-- Host info -->
+                        <Border IsVisible="{Binding IsHostLobby}"
+                                Classes="CardBorder"
+                                Padding="14,10">
+                            <Grid RowDefinitions="Auto,Auto"
+                                  ColumnDefinitions="Auto,*"
+                                  RowSpacing="6"
+                                  ColumnSpacing="14">
+                                <TextBlock Text="ADDRESS"
+                                           FontSize="10"
+                                           Classes="Secondary"
+                                           LetterSpacing="0.5"/>
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding HostAddressesDisplay}"
+                                           TextWrapping="Wrap"
+                                           FontSize="13"/>
+                                <TextBlock Grid.Row="1"
+                                           Text="PORT"
+                                           FontSize="10"
+                                           Classes="Secondary"
+                                           LetterSpacing="0.5"/>
+                                <TextBlock Grid.Row="1"
+                                           Grid.Column="1"
+                                           Text="{Binding HostPortDisplay}"
+                                           FontSize="13"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Connected clients -->
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="CONNECTED CLIENTS"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Classes="Secondary"
+                                       LetterSpacing="0.5"/>
+                            <ItemsControl ItemsSource="{Binding LobbyClients}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:LobbyClientItemViewModel">
+                                        <Border Classes="CardBorder"
+                                                Margin="0,0,0,6"
+                                                Padding="12,10">
+                                            <Grid ColumnDefinitions="4,*,Auto"
+                                                  ColumnSpacing="12">
+                                                <Border Width="4"
+                                                        CornerRadius="2"
+                                                        Background="{StaticResource GoldDarkBrush}"
+                                                        VerticalAlignment="Stretch"/>
+                                                <StackPanel Grid.Column="1" Spacing="2">
+                                                    <TextBlock Text="{Binding DisplayName}"
+                                                               FontSize="14"
+                                                               FontWeight="SemiBold"/>
+                                                    <StackPanel Orientation="Horizontal"
+                                                                Spacing="10">
+                                                        <TextBlock Text="{Binding TeamDisplay}"
+                                                                   FontSize="12"
+                                                                   Classes="Secondary"/>
+                                                        <TextBlock Text="{Binding RoleDisplay}"
+                                                                   FontSize="12"
+                                                                   Classes="Secondary"/>
+                                                    </StackPanel>
                                                 </StackPanel>
-                                            </StackPanel>
-                                            <TextBlock Grid.Column="1"
-                                                       Text="{Binding HostMarker}"
-                                                       IsVisible="{Binding IsHost}"
-                                                       Opacity="0.72"/>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
+                                                <TextBlock Grid.Column="2"
+                                                           Text="{Binding HostMarker}"
+                                                           IsVisible="{Binding IsHost}"
+                                                           Classes="Gold"
+                                                           FontSize="11"
+                                                           VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
 
-                    <Grid ColumnDefinitions="*,*"
-                          RowDefinitions="Auto,Auto"
-                          ColumnSpacing="12"
-                          RowSpacing="8">
-                        <TextBlock Text="Team"/>
-                        <TextBlock Grid.Column="1"
-                                   Text="Fighter Role"/>
-                        <ComboBox Grid.Row="1"
-                                  ItemsSource="{Binding TeamOptions}"
-                                  SelectedItem="{Binding SelectedTeam, Mode=TwoWay}"
-                                  HorizontalAlignment="Stretch"/>
-                        <ComboBox Grid.Row="1"
-                                  Grid.Column="1"
-                                  ItemsSource="{Binding RoleOptions}"
-                                  SelectedItem="{Binding SelectedRole, Mode=TwoWay}"
-                                  HorizontalAlignment="Stretch"/>
-                    </Grid>
+                        <!-- Team/role selection -->
+                        <Grid ColumnDefinitions="*,*"
+                              RowDefinitions="Auto,Auto"
+                              ColumnSpacing="12"
+                              RowSpacing="6">
+                            <TextBlock Text="TEAM"
+                                       FontSize="11"
+                                       Classes="Secondary"
+                                       LetterSpacing="0.5"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="FIGHTER ROLE"
+                                       FontSize="11"
+                                       Classes="Secondary"
+                                       LetterSpacing="0.5"/>
+                            <ComboBox Grid.Row="1"
+                                      ItemsSource="{Binding TeamOptions}"
+                                      SelectedItem="{Binding SelectedTeam, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch"/>
+                            <ComboBox Grid.Row="1"
+                                      Grid.Column="1"
+                                      ItemsSource="{Binding RoleOptions}"
+                                      SelectedItem="{Binding SelectedRole, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch"/>
+                        </Grid>
 
-                    <TextBlock Text="{Binding SelectionFeedback}"
-                               IsVisible="{Binding HasSelectionFeedback}"
-                               Foreground="#B3261E"
-                               TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding SelectionFeedback}"
+                                   IsVisible="{Binding HasSelectionFeedback}"
+                                   Classes="Error"
+                                   TextWrapping="Wrap"
+                                   FontSize="13"/>
 
-                    <Button Content="Apply Selection"
-                            Command="{Binding ApplySelectionCommand}"
-                            MinHeight="42"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Center"/>
+                        <Button Content="Apply Selection"
+                                Command="{Binding ApplySelectionCommand}"
+                                HorizontalAlignment="Stretch"/>
 
-                    <StackPanel IsVisible="{Binding IsHostLobby}"
-                                Spacing="8">
-                        <TextBlock Text="{Binding StartLockStatus}"
-                                   Opacity="0.72"
-                                   TextWrapping="Wrap"/>
-                        <Button Content="Start Match"
-                                Command="{Binding StartMatchCommand}"
-                                IsEnabled="{Binding CanStartMatch}"
-                                MinHeight="42"
+                        <StackPanel IsVisible="{Binding IsHostLobby}"
+                                    Spacing="8">
+                            <TextBlock Text="{Binding StartLockStatus}"
+                                       Classes="Secondary"
+                                       TextWrapping="Wrap"
+                                       FontSize="12"/>
+                            <Button Content="Start Match"
+                                    Command="{Binding StartMatchCommand}"
+                                    IsEnabled="{Binding CanStartMatch}"
+                                    HorizontalAlignment="Stretch"/>
+                        </StackPanel>
+
+                        <Button Content="Back"
+                                Command="{Binding BackToMainMenuCommand}"
                                 HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Center"/>
+                                Opacity="0.7"/>
                     </StackPanel>
-
-                    <Button Content="Back"
-                            Command="{Binding BackToMainMenuCommand}"
-                            MinHeight="42"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Center"/>
-                </StackPanel>
+                </Border>
             </Grid>
 
+            <!-- Match -->
             <Grid IsVisible="{Binding CurrentScreen, Converter={x:Static views:EnumEqualsConverter.Instance}, ConverterParameter={x:Static vm:AppScreen.Match}}"
                   RowDefinitions="Auto,*,Auto,Auto"
-                  RowSpacing="12">
-                <Grid ColumnDefinitions="*,Auto,*"
-                      ColumnSpacing="16">
-                    <StackPanel Orientation="Horizontal"
-                                Spacing="12"
-                                VerticalAlignment="Center">
-                        <TextBlock Text="{Binding MatchRoundDisplay}"
-                                   FontSize="18"
-                                   FontWeight="SemiBold"/>
-                        <TextBlock Text="{Binding MatchTimerDisplay}"
-                                   FontSize="18"
-                                   FontWeight="SemiBold"/>
-                    </StackPanel>
+                  RowSpacing="10">
 
-                    <TextBlock Grid.Column="1"
-                               Text="{Binding MatchScoreDisplay}"
-                               FontSize="20"
-                               FontWeight="SemiBold"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"/>
+                <!-- HUD top bar -->
+                <Border Classes="CardBorder" Padding="14,8">
+                    <Grid ColumnDefinitions="*,Auto,*"
+                          ColumnSpacing="16">
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="14"
+                                    VerticalAlignment="Center">
+                            <TextBlock Text="{Binding MatchRoundDisplay}"
+                                       FontSize="15"
+                                       FontWeight="SemiBold"
+                                       Classes="Gold"/>
+                            <TextBlock Text="{Binding MatchTimerDisplay}"
+                                       FontSize="15"
+                                       FontWeight="SemiBold"/>
+                        </StackPanel>
 
-                    <TextBlock Grid.Column="2"
-                               Text="{Binding MatchResultDisplay}"
-                               IsVisible="{Binding HasMatchResult}"
-                               TextWrapping="Wrap"
-                               HorizontalAlignment="Right"
-                               VerticalAlignment="Center"
-                               Opacity="0.78"/>
-                </Grid>
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding MatchScoreDisplay}"
+                                   FontSize="22"
+                                   FontWeight="Bold"
+                                   Classes="Gold"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
 
+                        <TextBlock Grid.Column="2"
+                                   Text="{Binding MatchResultDisplay}"
+                                   IsVisible="{Binding HasMatchResult}"
+                                   TextWrapping="Wrap"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Center"
+                                   Classes="Secondary"
+                                   FontSize="13"/>
+                    </Grid>
+                </Border>
+
+                <!-- Game surface with result overlay -->
                 <Grid Grid.Row="1">
                     <views:GameSurface MatchSnapshot="{Binding MatchSnapshot}"
                                        MinHeight="320"
@@ -292,28 +357,30 @@
                                        Focusable="True"/>
 
                     <Border IsVisible="{Binding HasMatchResult}"
-                            Background="#DD101418"
-                            BorderBrush="#66F4F7FA"
+                            Background="#DD010A13"
+                            BorderBrush="{StaticResource GoldDarkBrush}"
                             BorderThickness="1"
                             CornerRadius="6"
-                            Padding="24,18"
+                            Padding="32,24"
                             MaxWidth="420"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center">
-                        <StackPanel Spacing="6">
+                        <StackPanel Spacing="8">
                             <TextBlock Text="{Binding MatchResultDisplay}"
                                        FontSize="24"
-                                       FontWeight="SemiBold"
+                                       FontWeight="Bold"
+                                       Classes="Gold"
                                        TextAlignment="Center"
                                        TextWrapping="Wrap"/>
                             <TextBlock Text="{Binding MatchScoreDisplay}"
                                        FontSize="16"
                                        TextAlignment="Center"
-                                       Opacity="0.78"/>
+                                       Classes="Secondary"/>
                         </StackPanel>
                     </Border>
                 </Grid>
 
+                <!-- Fighter HUD panels -->
                 <ItemsControl Grid.Row="2"
                               ItemsSource="{Binding MatchFighters}">
                     <ItemsControl.ItemsPanel>
@@ -323,55 +390,64 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:MatchFighterHudItemViewModel">
-                            <Border BorderBrush="#33818A96"
-                                    BorderThickness="1"
-                                    CornerRadius="6"
-                                    Padding="10"
-                                    Margin="0,0,8,0">
+                            <Border Classes="CardBorder"
+                                    Margin="0,0,8,0"
+                                    Padding="10,8">
                                 <Grid RowDefinitions="Auto,Auto,Auto"
-                                      RowSpacing="6">
+                                      RowSpacing="4">
                                     <Grid ColumnDefinitions="*,Auto"
                                           ColumnSpacing="8">
                                         <TextBlock Text="{Binding DisplayName}"
                                                    FontWeight="SemiBold"
+                                                   FontSize="13"
                                                    TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Grid.Column="1"
                                                    Text="{Binding StateDisplay}"
-                                                   Opacity="0.72"/>
+                                                   FontSize="11"
+                                                   Classes="Secondary"/>
                                     </Grid>
 
                                     <StackPanel Grid.Row="1"
                                                 Orientation="Horizontal"
                                                 Spacing="8">
                                         <TextBlock Text="{Binding TeamDisplay}"
-                                                   Opacity="0.72"/>
+                                                   FontSize="11"
+                                                   Classes="Secondary"/>
                                         <TextBlock Text="{Binding RoleDisplay}"
-                                                   Opacity="0.72"/>
+                                                   FontSize="11"
+                                                   Classes="Secondary"/>
                                     </StackPanel>
 
                                     <Grid Grid.Row="2"
                                           RowDefinitions="Auto,Auto,Auto"
                                           ColumnDefinitions="Auto,*"
-                                          RowSpacing="3"
-                                          ColumnSpacing="8">
-                                        <TextBlock Text="Health"
-                                                   Opacity="0.72"/>
+                                          RowSpacing="2"
+                                          ColumnSpacing="8"
+                                          Margin="0,2,0,0">
+                                        <TextBlock Text="HP"
+                                                   FontSize="10"
+                                                   Classes="Secondary"/>
                                         <TextBlock Grid.Column="1"
                                                    Text="{Binding HealthDisplay}"
+                                                   FontSize="11"
                                                    HorizontalAlignment="Right"/>
                                         <TextBlock Grid.Row="1"
-                                                   Text="Primary"
-                                                   Opacity="0.72"/>
+                                                   Text="PRI"
+                                                   FontSize="10"
+                                                   Classes="Secondary"/>
                                         <TextBlock Grid.Row="1"
                                                    Grid.Column="1"
                                                    Text="{Binding PrimaryCooldownDisplay}"
+                                                   FontSize="11"
                                                    HorizontalAlignment="Right"/>
                                         <TextBlock Grid.Row="2"
-                                                   Text="Ability"
-                                                   Opacity="0.72"/>
+                                                   Text="ABL"
+                                                   FontSize="10"
+                                                   Classes="Secondary"/>
                                         <TextBlock Grid.Row="2"
                                                    Grid.Column="1"
                                                    Text="{Binding AbilityCooldownDisplay}"
+                                                   FontSize="11"
                                                    HorizontalAlignment="Right"/>
                                     </Grid>
                                 </Grid>
@@ -383,10 +459,10 @@
                 <Button Grid.Row="3"
                         Content="Back"
                         Command="{Binding BackToMainMenuCommand}"
-                        MinHeight="42"
-                        Width="180"
+                        Width="160"
                         HorizontalAlignment="Center"
-                        HorizontalContentAlignment="Center"/>
+                        Margin="0,8,0,0"
+                        Opacity="0.7"/>
             </Grid>
         </Grid>
     </Grid>

@@ -1,0 +1,153 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Styles.Resources>
+        <!-- Background palette -->
+        <Color x:Key="BgPrimary">#010A13</Color>
+        <Color x:Key="BgSecondary">#0A1428</Color>
+        <Color x:Key="BgSurface">#1E2328</Color>
+        <Color x:Key="BgElevated">#1E282D</Color>
+
+        <!-- Gold / bronze accent -->
+        <Color x:Key="GoldAccent">#C89B3C</Color>
+        <Color x:Key="GoldDark">#785A28</Color>
+        <Color x:Key="GoldDeep">#463714</Color>
+
+        <!-- Text -->
+        <Color x:Key="TextPrimary">#F0E6D2</Color>
+        <Color x:Key="TextSecondary">#A09B8C</Color>
+
+        <!-- Team colors -->
+        <Color x:Key="TeamRed">#C8414B</Color>
+        <Color x:Key="TeamBlue">#0A96AA</Color>
+
+        <!-- Semantic -->
+        <Color x:Key="ErrorRed">#E84057</Color>
+        <Color x:Key="SuccessGreen">#5B9A4A</Color>
+
+        <!-- Brushes -->
+        <SolidColorBrush x:Key="BgPrimaryBrush" Color="{StaticResource BgPrimary}" />
+        <SolidColorBrush x:Key="BgSecondaryBrush" Color="{StaticResource BgSecondary}" />
+        <SolidColorBrush x:Key="BgSurfaceBrush" Color="{StaticResource BgSurface}" />
+        <SolidColorBrush x:Key="BgElevatedBrush" Color="{StaticResource BgElevated}" />
+        <SolidColorBrush x:Key="GoldAccentBrush" Color="{StaticResource GoldAccent}" />
+        <SolidColorBrush x:Key="GoldDarkBrush" Color="{StaticResource GoldDark}" />
+        <SolidColorBrush x:Key="GoldDeepBrush" Color="{StaticResource GoldDeep}" />
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimary}" />
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondary}" />
+        <SolidColorBrush x:Key="TeamRedBrush" Color="{StaticResource TeamRed}" />
+        <SolidColorBrush x:Key="TeamBlueBrush" Color="{StaticResource TeamBlue}" />
+        <SolidColorBrush x:Key="ErrorRedBrush" Color="{StaticResource ErrorRed}" />
+        <SolidColorBrush x:Key="SuccessGreenBrush" Color="{StaticResource SuccessGreen}" />
+    </Styles.Resources>
+
+    <!-- Default button styling -->
+    <Style Selector="Button">
+        <Setter Property="Background" Value="{StaticResource BgSurfaceBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource GoldDarkBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="16,10" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="MinHeight" Value="40" />
+        <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource GoldDeepBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource GoldAccentBrush}" />
+    </Style>
+    <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource GoldDarkBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource GoldAccentBrush}" />
+    </Style>
+    <Style Selector="Button:disabled">
+        <Setter Property="Opacity" Value="0.4" />
+    </Style>
+
+    <!-- TextBox styling -->
+    <Style Selector="TextBox">
+        <Setter Property="Background" Value="{StaticResource BgSecondaryBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource GoldDarkBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="12,10" />
+        <Setter Property="MinHeight" Value="40" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="CaretBrush" Value="{StaticResource GoldAccentBrush}" />
+    </Style>
+    <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+        <Setter Property="BorderBrush" Value="{StaticResource GoldAccentBrush}" />
+    </Style>
+    <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+        <Setter Property="BorderBrush" Value="{StaticResource GoldAccentBrush}" />
+    </Style>
+
+    <!-- ComboBox styling -->
+    <Style Selector="ComboBox">
+        <Setter Property="Background" Value="{StaticResource BgSecondaryBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource GoldDarkBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="MinHeight" Value="40" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="ComboBox:pointerover /template/ Border#Background">
+        <Setter Property="BorderBrush" Value="{StaticResource GoldAccentBrush}" />
+    </Style>
+
+    <!-- Panel border class -->
+    <Style Selector="Border.PanelBorder">
+        <Setter Property="Background" Value="{StaticResource BgSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource GoldDarkBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="16" />
+    </Style>
+
+    <!-- Card border class -->
+    <Style Selector="Border.CardBorder">
+        <Setter Property="Background">
+            <SolidColorBrush Color="{StaticResource BgSurface}" Opacity="0.7" />
+        </Setter>
+        <Setter Property="BorderBrush">
+            <SolidColorBrush Color="{StaticResource GoldDark}" Opacity="0.6" />
+        </Setter>
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="12" />
+    </Style>
+
+    <!-- Gold divider -->
+    <Style Selector="Border.GoldDivider">
+        <Setter Property="Height" Value="1" />
+        <Setter Property="Background" Value="{StaticResource GoldDarkBrush}" />
+        <Setter Property="Opacity" Value="0.6" />
+        <Setter Property="Margin" Value="0,8" />
+    </Style>
+
+    <!-- Default text styling -->
+    <Style Selector="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.Secondary">
+        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.Gold">
+        <Setter Property="Foreground" Value="{StaticResource GoldAccentBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.Error">
+        <Setter Property="Foreground" Value="{StaticResource ErrorRedBrush}" />
+    </Style>
+
+</Styles>

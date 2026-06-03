@@ -23,4 +23,8 @@
     <ProjectReference Include="..\AvaloniaBattleground.Core\AvaloniaBattleground.Core.csproj" />
     <ProjectReference Include="..\AvaloniaBattleground.Networking\AvaloniaBattleground.Networking.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\Audio\*.wav" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

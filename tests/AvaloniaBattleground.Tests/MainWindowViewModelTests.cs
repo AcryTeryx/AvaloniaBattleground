@@ -1124,5 +1124,9 @@ public sealed class MainWindowViewModelTests
         {
             MusicTracks.Add(track);
         }
+
+        public void Dispose()
+        {
+        }
     }
 }
