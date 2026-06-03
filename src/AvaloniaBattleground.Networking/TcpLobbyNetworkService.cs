@@ -230,7 +230,11 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
 
         public event EventHandler<MatchSnapshot>? MatchSnapshotChanged;
 
-        public event EventHandler<LobbySessionEnded>? SessionEnded;
+        public event EventHandler<LobbySessionEnded>? SessionEnded
+        {
+            add { }
+            remove { }
+        }
 
         public IReadOnlyList<string> ShareableAddresses { get; }
 
@@ -419,6 +423,11 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                             _stopping.Token);
 
                         if (message is null)
+                        {
+                            return;
+                        }
+
+                        if (message.MessageType == WireMessageTypes.ClientDisconnected)
                         {
                             return;
                         }
@@ -819,10 +828,50 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
 
         public async ValueTask DisposeAsync()
         {
+            await TrySendClientDisconnectedAsync();
             await _stopping.CancelAsync();
+            try
+            {
+                _tcpClient.Client.Shutdown(SocketShutdown.Both);
+            }
+            catch (SocketException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+
             _tcpClient.Dispose();
             _writeLock.Dispose();
             _stopping.Dispose();
+        }
+
+        private async Task TrySendClientDisconnectedAsync()
+        {
+            try
+            {
+                await _writeLock.WaitAsync();
+                try
+                {
+                    await WriteWireMessageAsync(
+                        _tcpClient.GetStream(),
+                        WireMessage.ClientDisconnected(),
+                        CancellationToken.None);
+                }
+                finally
+                {
+                    _writeLock.Release();
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (SocketException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
         }
 
         public async Task SendPlayerInputAsync(
@@ -1013,6 +1062,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
         public const string JoinAccepted = nameof(JoinAccepted);
         public const string JoinRejected = nameof(JoinRejected);
         public const string JoinRequest = nameof(JoinRequest);
+        public const string ClientDisconnected = nameof(ClientDisconnected);
         public const string LobbySnapshot = nameof(LobbySnapshot);
         public const string MatchSnapshot = nameof(MatchSnapshot);
         public const string PlayerInput = nameof(PlayerInput);
@@ -1064,6 +1114,13 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 LobbyProtocol.CurrentVersion,
                 FailureReason: failureReason.ToString(),
                 FailureMessage: failureMessage);
+        }
+
+        public static WireMessage ClientDisconnected()
+        {
+            return new WireMessage(
+                WireMessageTypes.ClientDisconnected,
+                LobbyProtocol.CurrentVersion);
         }
 
         public static WireMessage LobbySnapshot(IReadOnlyList<LobbyClientInfo> clients)
