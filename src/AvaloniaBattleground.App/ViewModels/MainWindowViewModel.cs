@@ -45,7 +45,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private Team _selectedTeam = Team.Red;
     private string _selectionFeedback = string.Empty;
     private EventHandler<MatchSnapshot>? _matchSnapshotChangedHandler;
-    private EventHandler<LobbySnapshot>? _snapshotChangedHandler;
+    private EventHandler<LobbyState>? _snapshotChangedHandler;
     private EventHandler<LobbySessionEnded>? _sessionEndedHandler;
     private string _startLockStatus = "Waiting for exactly four Clients.";
 
@@ -443,7 +443,7 @@ public partial class MainWindowViewModel : ViewModelBase
         if (result.Succeeded)
         {
             SetSelectionFeedback(string.Empty);
-            UpdateLobbyClients(LobbySnapshot.FromLobbyState(result.Lobby));
+            UpdateLobbyClients(result.Lobby);
             return;
         }
 
@@ -508,7 +508,7 @@ public partial class MainWindowViewModel : ViewModelBase
         };
     }
 
-    private void UpdateLobbyClients(LobbySnapshot snapshot)
+    private void UpdateLobbyClients(LobbyState snapshot)
     {
         _audioCoordinator.HandleLobbySnapshot(snapshot);
         LobbyClients.Clear();

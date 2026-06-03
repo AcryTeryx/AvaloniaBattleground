@@ -43,7 +43,7 @@ internal sealed class GameAudioCoordinator(IGameAudio audio)
         _knownLobbyClientIds = null;
     }
 
-    public void HandleLobbySnapshot(LobbySnapshot snapshot)
+    public void HandleLobbySnapshot(LobbyState snapshot)
     {
         var clientIds = snapshot.Clients
             .Select(client => client.ClientId)

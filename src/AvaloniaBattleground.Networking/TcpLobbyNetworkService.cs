@@ -98,7 +98,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 tcpClient,
                 reader,
                 response.ClientId.Value,
-                new LobbySnapshot(response.Clients));
+                new LobbyState(response.Clients));
 
             return JoinLobbyResult.Success(session);
         }
@@ -243,7 +243,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             _ = AcceptClientsAsync();
         }
 
-        public event EventHandler<LobbySnapshot>? SnapshotChanged;
+        public event EventHandler<LobbyState>? SnapshotChanged;
 
         public event EventHandler<MatchSnapshot>? MatchSnapshotChanged;
 
@@ -259,13 +259,13 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
 
         public int LocalClientId => 1;
 
-        public LobbySnapshot Snapshot
+        public LobbyState Snapshot
         {
             get
             {
                 lock (_syncRoot)
                 {
-                    return LobbySnapshot.FromLobbyState(_lobby);
+                    return _lobby;
                 }
             }
         }
@@ -476,7 +476,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                                 tcpClient.GetStream(),
                                 WireMessage.SelectionAccepted(
                                     message.RequestId.Value,
-                                    LobbySnapshot.FromLobbyState(result.Lobby).Clients),
+                                    result.Lobby.Clients),
                                 _stopping.Token);
                         }
                         else
@@ -522,7 +522,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             }
 
             ConnectedClient? disconnectedClient = null;
-            LobbySnapshot? snapshot = null;
+            LobbyState? snapshot = null;
             MatchSnapshot? matchSnapshot = null;
 
             lock (_syncRoot)
@@ -543,7 +543,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                         _lobby.Clients
                             .Where(client => client.ClientId != clientId)
                             .ToArray());
-                    snapshot = LobbySnapshot.FromLobbyState(_lobby);
+                    snapshot = _lobby;
                 }
                 else
                 {
@@ -622,7 +622,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
 
         private int AddClient(TcpClient tcpClient, string displayName)
         {
-            LobbySnapshot snapshot;
+            LobbyState snapshot;
             int clientId;
 
             lock (_syncRoot)
@@ -631,7 +631,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 _connectedClients.Add(new ConnectedClient(clientId, tcpClient));
                 _lobby = new LobbyState(
                     [.. _lobby.Clients, new LobbyClient(clientId, displayName, false)]);
-                snapshot = LobbySnapshot.FromLobbyState(_lobby);
+                snapshot = _lobby;
             }
 
             SnapshotChanged?.Invoke(this, snapshot);
@@ -643,7 +643,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             CancellationToken cancellationToken)
         {
             LobbySelectionResult result;
-            LobbySnapshot snapshot;
+            LobbyState snapshot;
 
             lock (_syncRoot)
             {
@@ -653,7 +653,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                     _lobby = result.Lobby;
                 }
 
-                snapshot = LobbySnapshot.FromLobbyState(_lobby);
+                snapshot = _lobby;
             }
 
             if (result.Succeeded)
@@ -666,7 +666,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             return result;
         }
 
-        private async Task BroadcastSnapshotAsync(LobbySnapshot snapshot)
+        private async Task BroadcastSnapshotAsync(LobbyState snapshot)
         {
             ConnectedClient[] connectedClients;
             lock (_syncRoot)
@@ -782,13 +782,13 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
         private readonly SemaphoreSlim _writeLock = new(1, 1);
         private MatchSnapshot? _matchSnapshot;
         private int _sessionEnded;
-        private LobbySnapshot _snapshot;
+        private LobbyState _snapshot;
 
         public ClientLobbySession(
             TcpClient tcpClient,
             WireMessageReader reader,
             int localClientId,
-            LobbySnapshot initialSnapshot)
+            LobbyState initialSnapshot)
         {
             _tcpClient = tcpClient;
             _reader = reader;
@@ -798,7 +798,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             _ = ReadSnapshotsAsync();
         }
 
-        public event EventHandler<LobbySnapshot>? SnapshotChanged;
+        public event EventHandler<LobbyState>? SnapshotChanged;
 
         public event EventHandler<MatchSnapshot>? MatchSnapshotChanged;
 
@@ -806,7 +806,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
 
         public int LocalClientId { get; }
 
-        public LobbySnapshot Snapshot => _snapshot;
+        public LobbyState Snapshot => _snapshot;
 
         public MatchSnapshot? MatchSnapshot => _matchSnapshot;
 
@@ -982,7 +982,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                     if (message.MessageType == WireMessageTypes.LobbySnapshot &&
                         message.Clients is not null)
                     {
-                        UpdateSnapshot(new LobbySnapshot(message.Clients));
+                        UpdateSnapshot(new LobbyState(message.Clients));
                         continue;
                     }
 
@@ -997,11 +997,11 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                         message.RequestId is not null &&
                         message.Clients is not null)
                     {
-                        var snapshot = new LobbySnapshot(message.Clients);
+                        var snapshot = new LobbyState(message.Clients);
                         UpdateSnapshot(snapshot);
                         CompleteSelection(
                             message.RequestId.Value,
-                            LobbySelectionResult.Success(snapshot.ToLobbyState()));
+                            LobbySelectionResult.Success(snapshot));
                         continue;
                     }
 
@@ -1011,7 +1011,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                         CompleteSelection(
                             message.RequestId.Value,
                             LobbySelectionResult.Failure(
-                                _snapshot.ToLobbyState(),
+                                _snapshot,
                                 MapSelectionFailureReason(message.FailureReason),
                                 message.FailureMessage ?? "Selection was rejected."));
                     }
@@ -1038,7 +1038,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             }
         }
 
-        private void UpdateSnapshot(LobbySnapshot snapshot)
+        private void UpdateSnapshot(LobbyState snapshot)
         {
             _snapshot = snapshot;
             SnapshotChanged?.Invoke(this, _snapshot);
@@ -1077,7 +1077,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             {
                 pendingSelection.Value.TrySetResult(
                     LobbySelectionResult.Failure(
-                        _snapshot.ToLobbyState(),
+                        _snapshot,
                         LobbySelectionFailureReason.UnknownClient,
                         sessionEnded.Message));
             }
@@ -1094,7 +1094,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             EndSession(sessionEnded);
 
             return LobbySelectionResult.Failure(
-                _snapshot.ToLobbyState(),
+                _snapshot,
                 LobbySelectionFailureReason.UnknownClient,
                 sessionEnded.Message);
         }
@@ -1129,7 +1129,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
         FighterRole? Role = null,
         PlayerInput? PlayerInput = null,
         MatchSnapshot? MatchSnapshot = null,
-        IReadOnlyList<LobbyClientInfo>? Clients = null)
+        IReadOnlyList<LobbyClient>? Clients = null)
     {
         public static WireMessage JoinRequest(int protocolVersion, string displayName)
         {
@@ -1141,7 +1141,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
 
         public static WireMessage JoinAccepted(
             int clientId,
-            IReadOnlyList<LobbyClientInfo> clients)
+            IReadOnlyList<LobbyClient> clients)
         {
             return new WireMessage(
                 WireMessageTypes.JoinAccepted,
@@ -1168,7 +1168,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 LobbyProtocol.CurrentVersion);
         }
 
-        public static WireMessage LobbySnapshot(IReadOnlyList<LobbyClientInfo> clients)
+        public static WireMessage LobbySnapshot(IReadOnlyList<LobbyClient> clients)
         {
             return new WireMessage(
                 WireMessageTypes.LobbySnapshot,
@@ -1188,7 +1188,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
 
         public static WireMessage SelectionAccepted(
             Guid requestId,
-            IReadOnlyList<LobbyClientInfo> clients)
+            IReadOnlyList<LobbyClient> clients)
         {
             return new WireMessage(
                 WireMessageTypes.SelectionAccepted,
