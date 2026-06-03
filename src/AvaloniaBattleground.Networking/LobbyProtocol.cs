@@ -2,5 +2,5 @@ namespace AvaloniaBattleground.Networking;
 
 public static class LobbyProtocol
 {
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
 }

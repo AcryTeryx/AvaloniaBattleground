@@ -230,6 +230,8 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
 
         public event EventHandler<MatchSnapshot>? MatchSnapshotChanged;
 
+        public event EventHandler<LobbySessionEnded>? SessionEnded;
+
         public IReadOnlyList<string> ShareableAddresses { get; }
 
         public int Port { get; }
@@ -301,6 +303,13 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
 
         public async ValueTask DisposeAsync()
         {
+            if (!_stopping.IsCancellationRequested)
+            {
+                await BroadcastSessionEndedAsync(new LobbySessionEnded(
+                    LobbySessionEndReason.HostDisconnectEnd,
+                    "Host Disconnect End: the host closed the game."));
+            }
+
             await _stopping.CancelAsync();
             _listener.Stop();
 
@@ -399,74 +408,134 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
 
         private async Task ReadClientMessagesAsync(int clientId, TcpClient tcpClient)
         {
-            while (!_stopping.IsCancellationRequested)
+            try
             {
-                try
+                while (!_stopping.IsCancellationRequested)
                 {
-                    var message = await ReadWireMessageAsync(
-                        tcpClient.GetStream(),
-                        _stopping.Token);
+                    try
+                    {
+                        var message = await ReadWireMessageAsync(
+                            tcpClient.GetStream(),
+                            _stopping.Token);
 
-                    if (message is null)
+                        if (message is null)
+                        {
+                            return;
+                        }
+
+                        if (message.MessageType == WireMessageTypes.PlayerInput &&
+                            message.PlayerInput is not null)
+                        {
+                            SetPlayerInput(clientId, message.PlayerInput);
+                            continue;
+                        }
+
+                        if (message.MessageType != WireMessageTypes.SelectionRequest ||
+                            message.RequestId is null ||
+                            message.Team is null ||
+                            message.Role is null)
+                        {
+                            continue;
+                        }
+
+                        var result = await ApplySelectionAsync(
+                            new LobbySelection(clientId, message.Team.Value, message.Role.Value),
+                            _stopping.Token);
+
+                        if (result.Succeeded)
+                        {
+                            await WriteWireMessageAsync(
+                                tcpClient.GetStream(),
+                                WireMessage.SelectionAccepted(
+                                    message.RequestId.Value,
+                                    LobbySnapshot.FromLobbyState(result.Lobby).Clients),
+                                _stopping.Token);
+                        }
+                        else
+                        {
+                            await WriteWireMessageAsync(
+                                tcpClient.GetStream(),
+                                WireMessage.SelectionRejected(
+                                    message.RequestId.Value,
+                                    result.FailureReason ?? LobbySelectionFailureReason.UnknownClient,
+                                    result.Message),
+                                _stopping.Token);
+                        }
+                    }
+                    catch (OperationCanceledException)
                     {
                         return;
-                }
-
-                    if (message.MessageType == WireMessageTypes.PlayerInput &&
-                        message.PlayerInput is not null)
-                    {
-                        SetPlayerInput(clientId, message.PlayerInput);
-                        continue;
                     }
-
-                    if (message.MessageType != WireMessageTypes.SelectionRequest ||
-                        message.RequestId is null ||
-                        message.Team is null ||
-                        message.Role is null)
+                    catch (IOException)
                     {
-                        continue;
+                        return;
                     }
-
-                    var result = await ApplySelectionAsync(
-                        new LobbySelection(clientId, message.Team.Value, message.Role.Value),
-                        _stopping.Token);
-
-                    if (result.Succeeded)
+                    catch (JsonException)
                     {
-                        await WriteWireMessageAsync(
-                            tcpClient.GetStream(),
-                            WireMessage.SelectionAccepted(
-                                message.RequestId.Value,
-                                LobbySnapshot.FromLobbyState(result.Lobby).Clients),
-                            _stopping.Token);
+                        return;
                     }
-                    else
+                    catch (ObjectDisposedException)
                     {
-                        await WriteWireMessageAsync(
-                            tcpClient.GetStream(),
-                            WireMessage.SelectionRejected(
-                                message.RequestId.Value,
-                                result.FailureReason ?? LobbySelectionFailureReason.UnknownClient,
-                                result.Message),
-                            _stopping.Token);
+                        return;
                     }
                 }
-                catch (OperationCanceledException)
+            }
+            finally
+            {
+                await HandleClientDisconnectedAsync(clientId);
+            }
+        }
+
+        private async Task HandleClientDisconnectedAsync(int clientId)
+        {
+            if (_stopping.IsCancellationRequested)
+            {
+                return;
+            }
+
+            ConnectedClient? disconnectedClient = null;
+            LobbySnapshot? snapshot = null;
+            MatchSnapshot? matchSnapshot = null;
+
+            lock (_syncRoot)
+            {
+                var connectedClientIndex = _connectedClients.FindIndex(client =>
+                    client.ClientId == clientId);
+                if (connectedClientIndex < 0)
                 {
                     return;
                 }
-                catch (IOException)
+
+                disconnectedClient = _connectedClients[connectedClientIndex];
+                _connectedClients.RemoveAt(connectedClientIndex);
+
+                if (_matchSimulation is null)
                 {
-                    return;
+                    _lobby = new LobbyState(
+                        _lobby.Clients
+                            .Where(client => client.ClientId != clientId)
+                            .ToArray());
+                    snapshot = LobbySnapshot.FromLobbyState(_lobby);
                 }
-                catch (JsonException)
+                else
                 {
-                    return;
+                    _matchSimulation.CompleteMatchByDisconnectForfeit(clientId);
+                    matchSnapshot = _matchSimulation.Snapshot;
                 }
-                catch (ObjectDisposedException)
-                {
-                    return;
-                }
+            }
+
+            disconnectedClient.TcpClient.Dispose();
+
+            if (snapshot is not null)
+            {
+                SnapshotChanged?.Invoke(this, snapshot);
+                await BroadcastSnapshotAsync(snapshot);
+            }
+
+            if (matchSnapshot is not null)
+            {
+                MatchSnapshotChanged?.Invoke(this, matchSnapshot);
+                await BroadcastMatchSnapshotAsync(matchSnapshot, _stopping.Token);
             }
         }
 
@@ -588,15 +657,15 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 }
                 catch (IOException)
                 {
-                    // Disconnect outcome handling belongs to a later issue.
+                    await HandleClientDisconnectedAsync(connectedClient.ClientId);
                 }
                 catch (SocketException)
                 {
-                    // Disconnect outcome handling belongs to a later issue.
+                    await HandleClientDisconnectedAsync(connectedClient.ClientId);
                 }
                 catch (ObjectDisposedException)
                 {
-                    // Disconnect outcome handling belongs to a later issue.
+                    await HandleClientDisconnectedAsync(connectedClient.ClientId);
                 }
             }
         }
@@ -622,15 +691,44 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 }
                 catch (IOException)
                 {
-                    // Disconnect outcome handling belongs to a later issue.
+                    await HandleClientDisconnectedAsync(connectedClient.ClientId);
                 }
                 catch (SocketException)
                 {
-                    // Disconnect outcome handling belongs to a later issue.
+                    await HandleClientDisconnectedAsync(connectedClient.ClientId);
                 }
                 catch (ObjectDisposedException)
                 {
-                    // Disconnect outcome handling belongs to a later issue.
+                    await HandleClientDisconnectedAsync(connectedClient.ClientId);
+                }
+            }
+        }
+
+        private async Task BroadcastSessionEndedAsync(LobbySessionEnded sessionEnded)
+        {
+            ConnectedClient[] connectedClients;
+            lock (_syncRoot)
+            {
+                connectedClients = [.. _connectedClients];
+            }
+
+            foreach (var connectedClient in connectedClients)
+            {
+                try
+                {
+                    await WriteWireMessageAsync(
+                        connectedClient.TcpClient.GetStream(),
+                        WireMessage.SessionEnded(sessionEnded),
+                        CancellationToken.None);
+                }
+                catch (IOException)
+                {
+                }
+                catch (SocketException)
+                {
+                }
+                catch (ObjectDisposedException)
+                {
                 }
             }
         }
@@ -643,6 +741,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
         private readonly TcpClient _tcpClient;
         private readonly SemaphoreSlim _writeLock = new(1, 1);
         private MatchSnapshot? _matchSnapshot;
+        private int _sessionEnded;
         private LobbySnapshot _snapshot;
 
         public ClientLobbySession(TcpClient tcpClient, int localClientId, LobbySnapshot initialSnapshot)
@@ -657,6 +756,8 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
         public event EventHandler<LobbySnapshot>? SnapshotChanged;
 
         public event EventHandler<MatchSnapshot>? MatchSnapshotChanged;
+
+        public event EventHandler<LobbySessionEnded>? SessionEnded;
 
         public int LocalClientId { get; }
 
@@ -698,6 +799,18 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
 
                 return await completion.Task;
             }
+            catch (IOException)
+            {
+                return CreateHostDisconnectSelectionFailure();
+            }
+            catch (SocketException)
+            {
+                return CreateHostDisconnectSelectionFailure();
+            }
+            catch (ObjectDisposedException)
+            {
+                return CreateHostDisconnectSelectionFailure();
+            }
             finally
             {
                 _pendingSelections.TryRemove(requestId, out _);
@@ -716,17 +829,35 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             PlayerInput input,
             CancellationToken cancellationToken = default)
         {
-            await _writeLock.WaitAsync(cancellationToken);
+            var lockTaken = false;
             try
             {
-                    await WriteWireMessageAsync(
-                        _tcpClient.GetStream(),
-                        WireMessage.PlayerInputMessage(input),
-                        cancellationToken);
+                await _writeLock.WaitAsync(cancellationToken);
+                lockTaken = true;
+
+                await WriteWireMessageAsync(
+                    _tcpClient.GetStream(),
+                    WireMessage.PlayerInputMessage(input),
+                    cancellationToken);
+            }
+            catch (IOException)
+            {
+                EndSessionForHostDisconnect();
+            }
+            catch (SocketException)
+            {
+                EndSessionForHostDisconnect();
+            }
+            catch (ObjectDisposedException)
+            {
+                EndSessionForHostDisconnect();
             }
             finally
             {
-                _writeLock.Release();
+                if (lockTaken)
+                {
+                    _writeLock.Release();
+                }
             }
         }
 
@@ -742,6 +873,15 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
 
                     if (message is null)
                     {
+                        EndSessionForHostDisconnect();
+                        return;
+                    }
+
+                    if (message.MessageType == WireMessageTypes.SessionEnded)
+                    {
+                        EndSession(new LobbySessionEnded(
+                            MapSessionEndReason(message.FailureReason),
+                            message.FailureMessage ?? "Host Disconnect End: the host disconnected."));
                         return;
                     }
 
@@ -788,14 +928,17 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 }
                 catch (IOException)
                 {
+                    EndSessionForHostDisconnect();
                     return;
                 }
                 catch (JsonException)
                 {
+                    EndSessionForHostDisconnect();
                     return;
                 }
                 catch (ObjectDisposedException)
                 {
+                    EndSessionForHostDisconnect();
                     return;
                 }
             }
@@ -820,6 +963,47 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             _matchSnapshot = snapshot;
             MatchSnapshotChanged?.Invoke(this, snapshot);
         }
+
+        private void EndSessionForHostDisconnect()
+        {
+            EndSession(new LobbySessionEnded(
+                LobbySessionEndReason.HostDisconnectEnd,
+                "Host Disconnect End: the host disconnected or closed the game."));
+        }
+
+        private void EndSession(LobbySessionEnded sessionEnded)
+        {
+            if (_stopping.IsCancellationRequested ||
+                Interlocked.Exchange(ref _sessionEnded, 1) == 1)
+            {
+                return;
+            }
+
+            foreach (var pendingSelection in _pendingSelections)
+            {
+                pendingSelection.Value.TrySetResult(
+                    LobbySelectionResult.Failure(
+                        _snapshot.ToLobbyState(),
+                        LobbySelectionFailureReason.UnknownClient,
+                        sessionEnded.Message));
+            }
+
+            SessionEnded?.Invoke(this, sessionEnded);
+        }
+
+        private LobbySelectionResult CreateHostDisconnectSelectionFailure()
+        {
+            var sessionEnded = new LobbySessionEnded(
+                LobbySessionEndReason.HostDisconnectEnd,
+                "Host Disconnect End: the host disconnected or closed the game.");
+
+            EndSession(sessionEnded);
+
+            return LobbySelectionResult.Failure(
+                _snapshot.ToLobbyState(),
+                LobbySelectionFailureReason.UnknownClient,
+                sessionEnded.Message);
+        }
     }
 
     private sealed record ConnectedClient(int ClientId, TcpClient TcpClient);
@@ -835,6 +1019,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
         public const string SelectionAccepted = nameof(SelectionAccepted);
         public const string SelectionRejected = nameof(SelectionRejected);
         public const string SelectionRequest = nameof(SelectionRequest);
+        public const string SessionEnded = nameof(SessionEnded);
     }
 
     private sealed record WireMessage(
@@ -938,6 +1123,15 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 LobbyProtocol.CurrentVersion,
                 MatchSnapshot: matchSnapshot);
         }
+
+        public static WireMessage SessionEnded(LobbySessionEnded sessionEnded)
+        {
+            return new WireMessage(
+                WireMessageTypes.SessionEnded,
+                LobbyProtocol.CurrentVersion,
+                FailureReason: sessionEnded.Reason.ToString(),
+                FailureMessage: sessionEnded.Message);
+        }
     }
 
     private static LobbySelectionFailureReason MapSelectionFailureReason(string? failureReason)
@@ -945,5 +1139,12 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
         return Enum.TryParse<LobbySelectionFailureReason>(failureReason, out var parsed)
             ? parsed
             : LobbySelectionFailureReason.UnknownClient;
+    }
+
+    private static LobbySessionEndReason MapSessionEndReason(string? sessionEndReason)
+    {
+        return Enum.TryParse<LobbySessionEndReason>(sessionEndReason, out var parsed)
+            ? parsed
+            : LobbySessionEndReason.HostDisconnectEnd;
     }
 }

@@ -57,6 +57,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private string _selectionFeedback = string.Empty;
     private EventHandler<MatchSnapshot>? _matchSnapshotChangedHandler;
     private EventHandler<LobbySnapshot>? _snapshotChangedHandler;
+    private EventHandler<LobbySessionEnded>? _sessionEndedHandler;
     private string _startLockStatus = "Waiting for exactly four Clients.";
 
     public MainWindowViewModel()
@@ -402,8 +403,14 @@ public partial class MainWindowViewModel : ViewModelBase
             _viewDispatcher.Post(() => UpdateLobbyClients(snapshot));
         _matchSnapshotChangedHandler = (_, snapshot) =>
             _viewDispatcher.Post(() => ShowMatchSnapshot(snapshot));
+        _sessionEndedHandler = (_, sessionEnded) =>
+            _viewDispatcher.Post(() =>
+            {
+                _ = HandleLobbySessionEndedAsync(sessionEnded);
+            });
         _lobbySession.SnapshotChanged += _snapshotChangedHandler;
         _lobbySession.MatchSnapshotChanged += _matchSnapshotChangedHandler;
+        _lobbySession.SessionEnded += _sessionEndedHandler;
         UpdateLobbyClients(_lobbySession.Snapshot);
 
         if (_lobbySession.MatchSnapshot is not null)
@@ -429,15 +436,28 @@ public partial class MainWindowViewModel : ViewModelBase
             _lobbySession.MatchSnapshotChanged -= _matchSnapshotChangedHandler;
         }
 
+        if (_sessionEndedHandler is not null)
+        {
+            _lobbySession.SessionEnded -= _sessionEndedHandler;
+        }
+
         await _lobbySession.DisposeAsync();
         _lobbySession = null;
         _snapshotChangedHandler = null;
         _matchSnapshotChangedHandler = null;
+        _sessionEndedHandler = null;
         MatchSnapshot = null;
         UpdateMatchHud(null);
         CanStartMatch = false;
         StartLockStatus = "Waiting for exactly four Clients.";
         LobbyClients.Clear();
+    }
+
+    private async Task HandleLobbySessionEndedAsync(LobbySessionEnded sessionEnded)
+    {
+        await StopLobbySessionAsync();
+        SetConnectionFeedback(sessionEnded.Message);
+        ShowJoinFailureScreen();
     }
 
     private async Task ApplySelectionAsync()
@@ -606,9 +626,13 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private static string FormatWinReason(RoundWinReason winReason)
     {
-        return winReason == RoundWinReason.TeamElimination
-            ? "team elimination"
-            : "health tiebreaker";
+        return winReason switch
+        {
+            RoundWinReason.TeamElimination => "team elimination",
+            RoundWinReason.HealthTiebreaker => "health tiebreaker",
+            RoundWinReason.DisconnectForfeit => "disconnect forfeit",
+            _ => "unknown reason",
+        };
     }
 
     public void SetMatchKeyState(MatchInputKey key, bool isPressed)

@@ -75,6 +75,15 @@ public enum StartMatchFailureReason
     AlreadyStarted,
 }
 
+public enum LobbySessionEndReason
+{
+    HostDisconnectEnd,
+}
+
+public sealed record LobbySessionEnded(
+    LobbySessionEndReason Reason,
+    string Message);
+
 public sealed record JoinLobbyResult(
     IClientLobbySession? Session,
     JoinFailureReason? FailureReason,
@@ -116,6 +125,8 @@ public interface ILobbySession : IAsyncDisposable
     event EventHandler<LobbySnapshot>? SnapshotChanged;
 
     event EventHandler<MatchSnapshot>? MatchSnapshotChanged;
+
+    event EventHandler<LobbySessionEnded>? SessionEnded;
 
     int LocalClientId { get; }
 
