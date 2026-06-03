@@ -350,6 +350,12 @@ public sealed class TcpLobbyNetworkServiceTests
 
         session.SnapshotChanged += HandleSnapshotChanged;
 
+        if (predicate(session.Snapshot))
+        {
+            session.SnapshotChanged -= HandleSnapshotChanged;
+            return session.Snapshot;
+        }
+
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
         using var registration = timeout.Token.Register(
             () => completion.TrySetCanceled(timeout.Token));
@@ -387,6 +393,12 @@ public sealed class TcpLobbyNetworkServiceTests
         }
 
         session.MatchSnapshotChanged += HandleMatchSnapshotChanged;
+
+        if (session.MatchSnapshot is not null && predicate(session.MatchSnapshot))
+        {
+            session.MatchSnapshotChanged -= HandleMatchSnapshotChanged;
+            return session.MatchSnapshot;
+        }
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         using var registration = timeout.Token.Register(
