@@ -21,7 +21,7 @@ public sealed class LobbyRulesTests
     {
         var lobby = CreateLobby(4);
 
-        var result = lobby.ApplySelection(new LobbySelection(2, Team.Red, FighterRole.Ranged));
+        var result = LobbyRules.ApplySelection(lobby, new LobbySelection(2, Team.Red, FighterRole.Ranged));
 
         Assert.True(result.Succeeded, result.Message);
         var selectedClient = Assert.Single(
@@ -34,10 +34,12 @@ public sealed class LobbyRulesTests
     [Fact]
     public void Team_role_conflicts_are_rejected()
     {
-        var lobby = CreateLobby(4)
-            .ApplySelection(new LobbySelection(1, Team.Red, FighterRole.Melee)).Lobby;
+        var lobby = LobbyRules.ApplySelection(
+                CreateLobby(4),
+                new LobbySelection(1, Team.Red, FighterRole.Melee))
+            .Lobby;
 
-        var result = lobby.ApplySelection(new LobbySelection(2, Team.Red, FighterRole.Melee));
+        var result = LobbyRules.ApplySelection(lobby, new LobbySelection(2, Team.Red, FighterRole.Melee));
 
         Assert.False(result.Succeeded);
         Assert.Equal(LobbySelectionFailureReason.TeamRoleConflict, result.FailureReason);

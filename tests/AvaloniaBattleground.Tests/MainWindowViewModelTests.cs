@@ -60,7 +60,7 @@ public sealed class MainWindowViewModelTests
         var hostSession = new FakeHostLobbySession(
             ["192.168.1.10"],
             54321,
-            new LobbySnapshot([new LobbyClientInfo(1, "Acryteryx", true)]));
+            new LobbyState([new LobbyClient(1, "Acryteryx", true)]));
         var networkService = new RecordingLobbyNetworkService
         {
             HostSession = hostSession,
@@ -115,10 +115,10 @@ public sealed class MainWindowViewModelTests
         var profilePath = CreateProfilePath();
         var store = new LocalProfileStore(profilePath);
         var clientSession = new FakeClientLobbySession(
-            new LobbySnapshot(
+            new LobbyState(
             [
-                new LobbyClientInfo(1, "Host Player", true),
-                new LobbyClientInfo(2, "Joining Player", false),
+                new LobbyClient(1, "Host Player", true),
+                new LobbyClient(2, "Joining Player", false),
             ]));
         var networkService = new RecordingLobbyNetworkService
         {
@@ -225,7 +225,7 @@ public sealed class MainWindowViewModelTests
     public async Task Shell_reflects_lobby_snapshot_updates()
     {
         var clientSession = new FakeClientLobbySession(
-            new LobbySnapshot([new LobbyClientInfo(1, "Host Player", true)]));
+            new LobbyState([new LobbyClient(1, "Host Player", true)]));
         var networkService = new RecordingLobbyNetworkService
         {
             JoinResult = JoinLobbyResult.Success(clientSession),
@@ -242,10 +242,10 @@ public sealed class MainWindowViewModelTests
         await viewModel.JoinHostCommand.ExecuteAsync(null);
 
         clientSession.Publish(
-            new LobbySnapshot(
+            new LobbyState(
             [
-                new LobbyClientInfo(1, "Host Player", true),
-                new LobbyClientInfo(2, "Joining Player", false),
+                new LobbyClient(1, "Host Player", true),
+                new LobbyClient(2, "Joining Player", false),
             ]));
 
         Assert.Equal(["Host Player", "Joining Player"], viewModel.LobbyClients.Select(client => client.DisplayName));
@@ -257,7 +257,7 @@ public sealed class MainWindowViewModelTests
         var hostSession = new FakeHostLobbySession(
             ["127.0.0.1"],
             5000,
-            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+            CreateValidLobbyState());
         var networkService = new RecordingLobbyNetworkService
         {
             HostSession = hostSession,
@@ -283,7 +283,7 @@ public sealed class MainWindowViewModelTests
         var hostSession = new FakeHostLobbySession(
             ["127.0.0.1"],
             5000,
-            new LobbySnapshot([new LobbyClientInfo(1, "Host Player", true)]));
+            new LobbyState([new LobbyClient(1, "Host Player", true)]));
         var networkService = new RecordingLobbyNetworkService
         {
             HostSession = hostSession,
@@ -309,10 +309,10 @@ public sealed class MainWindowViewModelTests
     public async Task Shell_shows_selection_conflict_feedback()
     {
         var clientSession = new FakeClientLobbySession(
-            new LobbySnapshot(
+            new LobbyState(
             [
-                new LobbyClientInfo(1, "Host Player", true, Team.Red, FighterRole.Melee),
-                new LobbyClientInfo(2, "Joining Player", false),
+                new LobbyClient(1, "Host Player", true, Team.Red, FighterRole.Melee),
+                new LobbyClient(2, "Joining Player", false),
             ]));
         var networkService = new RecordingLobbyNetworkService
         {
@@ -342,7 +342,7 @@ public sealed class MainWindowViewModelTests
         var hostSession = new FakeHostLobbySession(
             ["127.0.0.1"],
             5000,
-            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+            CreateValidLobbyState());
         var networkService = new RecordingLobbyNetworkService
         {
             HostSession = hostSession,
@@ -369,7 +369,7 @@ public sealed class MainWindowViewModelTests
         var hostSession = new FakeHostLobbySession(
             ["127.0.0.1"],
             5000,
-            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+            CreateValidLobbyState());
         var networkService = new RecordingLobbyNetworkService
         {
             HostSession = hostSession,
@@ -396,7 +396,7 @@ public sealed class MainWindowViewModelTests
         var hostSession = new FakeHostLobbySession(
             ["127.0.0.1"],
             5000,
-            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+            CreateValidLobbyState());
         var networkService = new RecordingLobbyNetworkService
         {
             HostSession = hostSession,
@@ -424,7 +424,7 @@ public sealed class MainWindowViewModelTests
         var hostSession = new FakeHostLobbySession(
             ["127.0.0.1"],
             5000,
-            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+            CreateValidLobbyState());
         var networkService = new RecordingLobbyNetworkService
         {
             HostSession = hostSession,
@@ -463,7 +463,7 @@ public sealed class MainWindowViewModelTests
         var hostSession = new FakeHostLobbySession(
             ["127.0.0.1"],
             5000,
-            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+            CreateValidLobbyState());
         var networkService = new RecordingLobbyNetworkService
         {
             HostSession = hostSession,
@@ -501,7 +501,7 @@ public sealed class MainWindowViewModelTests
         var hostSession = new FakeHostLobbySession(
             ["127.0.0.1"],
             5000,
-            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+            CreateValidLobbyState());
         var networkService = new RecordingLobbyNetworkService
         {
             HostSession = hostSession,
@@ -540,7 +540,7 @@ public sealed class MainWindowViewModelTests
         var hostSession = new FakeHostLobbySession(
             ["127.0.0.1"],
             5000,
-            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+            CreateValidLobbyState());
         var networkService = new RecordingLobbyNetworkService
         {
             HostSession = hostSession,
@@ -579,7 +579,7 @@ public sealed class MainWindowViewModelTests
         var hostSession = new FakeHostLobbySession(
             ["127.0.0.1"],
             5000,
-            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+            CreateValidLobbyState());
         var networkService = new RecordingLobbyNetworkService
         {
             HostSession = hostSession,
@@ -619,7 +619,7 @@ public sealed class MainWindowViewModelTests
         var hostSession = new FakeHostLobbySession(
             ["127.0.0.1"],
             5000,
-            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+            CreateValidLobbyState());
         var networkService = new RecordingLobbyNetworkService
         {
             HostSession = hostSession,
@@ -662,7 +662,7 @@ public sealed class MainWindowViewModelTests
         var hostSession = new FakeHostLobbySession(
             ["127.0.0.1"],
             5000,
-            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+            CreateValidLobbyState());
         var networkService = new RecordingLobbyNetworkService
         {
             HostSession = hostSession,
@@ -693,7 +693,7 @@ public sealed class MainWindowViewModelTests
         var hostSession = new FakeHostLobbySession(
             ["127.0.0.1"],
             5000,
-            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+            CreateValidLobbyState());
         var networkService = new RecordingLobbyNetworkService
         {
             HostSession = hostSession,
@@ -725,7 +725,7 @@ public sealed class MainWindowViewModelTests
         var hostSession = new FakeHostLobbySession(
             ["127.0.0.1"],
             5000,
-            new LobbySnapshot([new LobbyClientInfo(1, "Host Player", true)]));
+            new LobbyState([new LobbyClient(1, "Host Player", true)]));
         var networkService = new RecordingLobbyNetworkService
         {
             HostSession = hostSession,
@@ -739,10 +739,10 @@ public sealed class MainWindowViewModelTests
 
         await viewModel.HostMatchCommand.ExecuteAsync(null);
         hostSession.Publish(
-            new LobbySnapshot(
+            new LobbyState(
             [
-                new LobbyClientInfo(1, "Host Player", true),
-                new LobbyClientInfo(2, "Joining Player", false),
+                new LobbyClient(1, "Host Player", true),
+                new LobbyClient(2, "Joining Player", false),
             ]));
 
         Assert.Equal([GameAudioCue.LobbyClientJoined], audio.Cues);
@@ -755,10 +755,10 @@ public sealed class MainWindowViewModelTests
         var hostSession = new FakeHostLobbySession(
             ["127.0.0.1"],
             5000,
-            new LobbySnapshot(
+            new LobbyState(
             [
-                new LobbyClientInfo(1, "Host Player", true),
-                new LobbyClientInfo(2, "Joining Player", false),
+                new LobbyClient(1, "Host Player", true),
+                new LobbyClient(2, "Joining Player", false),
             ]));
         var networkService = new RecordingLobbyNetworkService
         {
@@ -772,7 +772,7 @@ public sealed class MainWindowViewModelTests
             audio);
 
         await viewModel.HostMatchCommand.ExecuteAsync(null);
-        hostSession.Publish(new LobbySnapshot([new LobbyClientInfo(1, "Host Player", true)]));
+        hostSession.Publish(new LobbyState([new LobbyClient(1, "Host Player", true)]));
 
         Assert.Equal([GameAudioCue.LobbyClientLeft], audio.Cues);
     }
@@ -783,7 +783,7 @@ public sealed class MainWindowViewModelTests
         var hostSession = new FakeHostLobbySession(
             ["127.0.0.1"],
             5000,
-            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+            CreateValidLobbyState());
         var networkService = new RecordingLobbyNetworkService
         {
             HostSession = hostSession,
@@ -815,7 +815,7 @@ public sealed class MainWindowViewModelTests
         var hostSession = new FakeHostLobbySession(
             ["127.0.0.1"],
             5000,
-            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+            CreateValidLobbyState());
         var networkService = new RecordingLobbyNetworkService
         {
             HostSession = hostSession,
@@ -866,7 +866,7 @@ public sealed class MainWindowViewModelTests
     public async Task Shell_leaves_match_flow_with_Host_Disconnect_End_feedback()
     {
         var clientSession = new FakeClientLobbySession(
-            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+            CreateValidLobbyState());
         var networkService = new RecordingLobbyNetworkService
         {
             JoinResult = JoinLobbyResult.Success(clientSession),
@@ -897,7 +897,7 @@ public sealed class MainWindowViewModelTests
     public async Task Shell_shows_Disconnect_Forfeit_match_result()
     {
         var clientSession = new FakeClientLobbySession(
-            LobbySnapshot.FromLobbyState(CreateValidLobbyState()));
+            CreateValidLobbyState());
         var networkService = new RecordingLobbyNetworkService
         {
             JoinResult = JoinLobbyResult.Success(clientSession),
@@ -976,7 +976,7 @@ public sealed class MainWindowViewModelTests
         public IHostLobbySession HostSession { get; init; } = new FakeHostLobbySession(
             ["127.0.0.1"],
             5000,
-            new LobbySnapshot([new LobbyClientInfo(1, "Host Player", true)]));
+            new LobbyState([new LobbyClient(1, "Host Player", true)]));
 
         public JoinLobbyResult JoinResult { get; init; } = JoinLobbyResult.Failure(
             JoinFailureReason.ConnectionFailed,
@@ -1013,7 +1013,7 @@ public sealed class MainWindowViewModelTests
     private sealed class FakeHostLobbySession(
         IReadOnlyList<string> shareableAddresses,
         int port,
-        LobbySnapshot snapshot)
+        LobbyState snapshot)
         : FakeLobbySession(snapshot, 1), IHostLobbySession
     {
         public IReadOnlyList<string> ShareableAddresses { get; } = shareableAddresses;
@@ -1029,19 +1029,19 @@ public sealed class MainWindowViewModelTests
                     "The Lobby must have exactly four Clients and valid Team roles."));
             }
 
-            var simulation = MatchSimulation.Start(Snapshot.ToLobbyState());
+            var simulation = MatchSimulation.Start(Snapshot);
             PublishMatchSnapshot(simulation.Snapshot);
 
             return Task.FromResult(StartMatchResult.Success(simulation.Snapshot));
         }
     }
 
-    private sealed class FakeClientLobbySession(LobbySnapshot snapshot)
+    private sealed class FakeClientLobbySession(LobbyState snapshot)
         : FakeLobbySession(snapshot, 2), IClientLobbySession;
 
-    private abstract class FakeLobbySession(LobbySnapshot snapshot, int localClientId) : ILobbySession
+    private abstract class FakeLobbySession(LobbyState snapshot, int localClientId) : ILobbySession
     {
-        public event EventHandler<LobbySnapshot>? SnapshotChanged;
+        public event EventHandler<LobbyState>? SnapshotChanged;
 
         public event EventHandler<MatchSnapshot>? MatchSnapshotChanged;
 
@@ -1049,7 +1049,7 @@ public sealed class MainWindowViewModelTests
 
         public int LocalClientId { get; } = localClientId;
 
-        public LobbySnapshot Snapshot { get; private set; } = snapshot;
+        public LobbyState Snapshot { get; private set; } = snapshot;
 
         public MatchSnapshot? MatchSnapshot { get; private set; }
 
@@ -1060,12 +1060,11 @@ public sealed class MainWindowViewModelTests
             FighterRole role,
             CancellationToken cancellationToken = default)
         {
-            var result = Snapshot.ToLobbyState()
-                .ApplySelection(new LobbySelection(LocalClientId, team, role));
+            var result = Snapshot.ApplySelection(new LobbySelection(LocalClientId, team, role));
 
             if (result.Succeeded)
             {
-                Publish(LobbySnapshot.FromLobbyState(result.Lobby));
+                Publish(result.Lobby);
             }
 
             return Task.FromResult(result);
@@ -1084,7 +1083,7 @@ public sealed class MainWindowViewModelTests
             return Task.CompletedTask;
         }
 
-        public void Publish(LobbySnapshot snapshot)
+        public void Publish(LobbyState snapshot)
         {
             Snapshot = snapshot;
             SnapshotChanged?.Invoke(this, snapshot);

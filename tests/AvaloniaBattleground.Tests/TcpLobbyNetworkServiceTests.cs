@@ -328,19 +328,19 @@ public sealed class TcpLobbyNetworkServiceTests
         Assert.NotEmpty(joinResult.FailureMessage);
     }
 
-    private static async Task<LobbySnapshot> WaitForSnapshotAsync(
+    private static async Task<LobbyState> WaitForSnapshotAsync(
         ILobbySession session,
-        Predicate<LobbySnapshot> predicate)
+        Predicate<LobbyState> predicate)
     {
         if (predicate(session.Snapshot))
         {
             return session.Snapshot;
         }
 
-        var completion = new TaskCompletionSource<LobbySnapshot>(
+        var completion = new TaskCompletionSource<LobbyState>(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
-        void HandleSnapshotChanged(object? sender, LobbySnapshot snapshot)
+        void HandleSnapshotChanged(object? sender, LobbyState snapshot)
         {
             if (predicate(snapshot))
             {

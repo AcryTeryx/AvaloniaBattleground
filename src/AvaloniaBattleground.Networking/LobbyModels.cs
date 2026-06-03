@@ -2,57 +2,6 @@ using AvaloniaBattleground.Core;
 
 namespace AvaloniaBattleground.Networking;
 
-public sealed record LobbyClientInfo(
-    int ClientId,
-    string DisplayName,
-    bool IsHost,
-    Team? Team = null,
-    FighterRole? Role = null);
-
-public sealed record LobbySnapshot(
-    IReadOnlyList<LobbyClientInfo> Clients,
-    LobbyStartEligibility StartEligibility)
-{
-    public LobbySnapshot(IReadOnlyList<LobbyClientInfo> clients)
-        : this(clients, ToLobbyState(clients).StartEligibility)
-    {
-    }
-
-    public static LobbySnapshot Empty { get; } = new([]);
-
-    public LobbyState ToLobbyState()
-    {
-        return ToLobbyState(Clients);
-    }
-
-    public static LobbySnapshot FromLobbyState(LobbyState lobby)
-    {
-        return new LobbySnapshot(
-            lobby.Clients
-                .Select(client => new LobbyClientInfo(
-                    client.ClientId,
-                    client.DisplayName,
-                    client.IsHost,
-                    client.Team,
-                    client.Role))
-                .ToArray(),
-            lobby.StartEligibility);
-    }
-
-    private static LobbyState ToLobbyState(IReadOnlyList<LobbyClientInfo> clients)
-    {
-        return new LobbyState(
-            clients
-                .Select(client => new LobbyClient(
-                    client.ClientId,
-                    client.DisplayName,
-                    client.IsHost,
-                    client.Team,
-                    client.Role))
-                .ToArray());
-    }
-}
-
 public sealed record JoinLobbyRequest(
     string HostAddress,
     int Port,
@@ -122,7 +71,7 @@ public sealed record StartMatchResult(
 
 public interface ILobbySession : IAsyncDisposable
 {
-    event EventHandler<LobbySnapshot>? SnapshotChanged;
+    event EventHandler<LobbyState>? SnapshotChanged;
 
     event EventHandler<MatchSnapshot>? MatchSnapshotChanged;
 
@@ -130,7 +79,7 @@ public interface ILobbySession : IAsyncDisposable
 
     int LocalClientId { get; }
 
-    LobbySnapshot Snapshot { get; }
+    LobbyState Snapshot { get; }
 
     MatchSnapshot? MatchSnapshot { get; }
 
