@@ -8,6 +8,19 @@ namespace AvaloniaBattleground.Tests;
 public sealed class MainWindowViewModelTests
 {
     [Fact]
+    public void Shell_starts_on_main_menu_screen()
+    {
+        var viewModel = new MainWindowViewModel(
+            new LocalProfileStore(CreateProfilePath()),
+            new RecordingApplicationShell(),
+            new RecordingLobbyNetworkService(),
+            new ImmediateViewDispatcher());
+
+        Assert.Equal(AppScreen.MainMenu, viewModel.CurrentScreen);
+        Assert.Equal("Main Menu", viewModel.CurrentScreenTitle);
+    }
+
+    [Fact]
     public void Shell_initializes_from_stored_local_display_name()
     {
         var profilePath = CreateProfilePath();
@@ -19,9 +32,7 @@ public sealed class MainWindowViewModelTests
             new RecordingLobbyNetworkService(),
             new ImmediateViewDispatcher());
 
-        Assert.True(viewModel.IsMainMenu);
-        Assert.False(viewModel.IsJoinScreen);
-        Assert.False(viewModel.IsLobbyScreen);
+        Assert.Equal(AppScreen.MainMenu, viewModel.CurrentScreen);
         Assert.Equal("Acryteryx", viewModel.CurrentDisplayName);
         Assert.Equal("Acryteryx", viewModel.DisplayNameInput);
     }
@@ -65,9 +76,7 @@ public sealed class MainWindowViewModelTests
 
         await viewModel.HostMatchCommand.ExecuteAsync(null);
 
-        Assert.False(viewModel.IsMainMenu);
-        Assert.False(viewModel.IsJoinScreen);
-        Assert.True(viewModel.IsLobbyScreen);
+        Assert.Equal(AppScreen.Lobby, viewModel.CurrentScreen);
         Assert.True(viewModel.IsHostLobby);
         Assert.Equal("Lobby", viewModel.CurrentScreenTitle);
         Assert.Equal("192.168.1.10", viewModel.HostAddressesDisplay);
@@ -94,9 +103,7 @@ public sealed class MainWindowViewModelTests
 
         viewModel.JoinMatchCommand.Execute(null);
 
-        Assert.False(viewModel.IsMainMenu);
-        Assert.True(viewModel.IsJoinScreen);
-        Assert.False(viewModel.IsLobbyScreen);
+        Assert.Equal(AppScreen.Join, viewModel.CurrentScreen);
         Assert.Equal("Join Match", viewModel.CurrentScreenTitle);
         Assert.Equal("Joining Player", viewModel.CurrentDisplayName);
         Assert.Equal("Joining Player", store.Load().DisplayName);
@@ -135,9 +142,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal("127.0.0.1", request.HostAddress);
         Assert.Equal(54321, request.Port);
         Assert.Equal("Joining Player", request.DisplayName);
-        Assert.False(viewModel.IsMainMenu);
-        Assert.False(viewModel.IsJoinScreen);
-        Assert.True(viewModel.IsLobbyScreen);
+        Assert.Equal(AppScreen.Lobby, viewModel.CurrentScreen);
         Assert.False(viewModel.IsHostLobby);
         Assert.Equal("Joining Player", store.Load().DisplayName);
         Assert.Equal(["Host Player", "Joining Player"], viewModel.LobbyClients.Select(client => client.DisplayName));
@@ -163,8 +168,7 @@ public sealed class MainWindowViewModelTests
         viewModel.JoinPortInput = "54321";
         await viewModel.JoinHostCommand.ExecuteAsync(null);
 
-        Assert.True(viewModel.IsJoinScreen);
-        Assert.False(viewModel.IsLobbyScreen);
+        Assert.Equal(AppScreen.Join, viewModel.CurrentScreen);
         Assert.True(viewModel.HasConnectionFeedback);
         Assert.Equal("Could not connect to the hosted Lobby.", viewModel.ConnectionFeedback);
     }
@@ -212,8 +216,7 @@ public sealed class MainWindowViewModelTests
         viewModel.JoinPortInput = "54321";
         await viewModel.JoinHostCommand.ExecuteAsync(null);
 
-        Assert.True(viewModel.IsJoinScreen);
-        Assert.False(viewModel.IsLobbyScreen);
+        Assert.Equal(AppScreen.Join, viewModel.CurrentScreen);
         Assert.True(viewModel.HasConnectionFeedback);
         Assert.Contains("Could not connect", viewModel.ConnectionFeedback);
     }
@@ -353,8 +356,7 @@ public sealed class MainWindowViewModelTests
         await viewModel.HostMatchCommand.ExecuteAsync(null);
         await viewModel.StartMatchCommand.ExecuteAsync(null);
 
-        Assert.True(viewModel.IsMatchScreen);
-        Assert.False(viewModel.IsLobbyScreen);
+        Assert.Equal(AppScreen.Match, viewModel.CurrentScreen);
         Assert.Equal("Match", viewModel.CurrentScreenTitle);
         Assert.NotNull(viewModel.MatchSnapshot);
         Assert.Equal(4, viewModel.MatchSnapshot.Fighters.Count);
@@ -842,7 +844,7 @@ public sealed class MainWindowViewModelTests
         await viewModel.HostMatchCommand.ExecuteAsync(null);
         hostSession.PublishMatchSnapshot(snapshot);
 
-        Assert.True(viewModel.IsMatchScreen);
+        Assert.Equal(AppScreen.Match, viewModel.CurrentScreen);
         Assert.Equal("Round 2", viewModel.MatchRoundDisplay);
         Assert.Equal("0:13", viewModel.MatchTimerDisplay);
         Assert.Equal("Red 1 - 0 Blue", viewModel.MatchScoreDisplay);
@@ -886,8 +888,7 @@ public sealed class MainWindowViewModelTests
             LobbySessionEndReason.HostDisconnectEnd,
             "Host Disconnect End: the host disconnected or closed the game."));
 
-        Assert.False(viewModel.IsMatchScreen);
-        Assert.True(viewModel.IsJoinScreen);
+        Assert.Equal(AppScreen.Join, viewModel.CurrentScreen);
         Assert.True(viewModel.HasConnectionFeedback);
         Assert.Contains("Host Disconnect End", viewModel.ConnectionFeedback);
     }
@@ -923,7 +924,7 @@ public sealed class MainWindowViewModelTests
         await viewModel.JoinHostCommand.ExecuteAsync(null);
         clientSession.PublishMatchSnapshot(snapshot);
 
-        Assert.True(viewModel.IsMatchScreen);
+        Assert.Equal(AppScreen.Match, viewModel.CurrentScreen);
         Assert.True(viewModel.HasMatchResult);
         Assert.Contains("Blue wins the match", viewModel.MatchResultDisplay);
         Assert.Contains("disconnect forfeit", viewModel.MatchResultDisplay);
