@@ -810,6 +810,75 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Shell_does_not_send_combat_input_while_local_Fighter_is_a_spectator()
+    {
+        var hostSession = new FakeHostLobbySession(
+            ["127.0.0.1"],
+            5000,
+            CreateValidLobbyState());
+        var networkService = new RecordingLobbyNetworkService
+        {
+            HostSession = hostSession,
+        };
+        var viewModel = new MainWindowViewModel(
+            new LocalProfileStore(CreateProfilePath()),
+            new RecordingApplicationShell(),
+            networkService,
+            new ImmediateViewDispatcher());
+
+        await viewModel.HostMatchCommand.ExecuteAsync(null);
+        await viewModel.StartMatchCommand.ExecuteAsync(null);
+        hostSession.PublishMatchSnapshot(viewModel.MatchSnapshot! with
+        {
+            Fighters = viewModel.MatchSnapshot.Fighters
+                .Select(fighter => fighter.ClientId == hostSession.LocalClientId
+                    ? fighter with { Health = 0 }
+                    : fighter)
+                .ToArray(),
+        });
+
+        viewModel.SetMatchKeyState(MatchInputKey.MoveRight, true);
+        viewModel.SetMatchKeyState(MatchInputKey.PrimaryAttack, true);
+
+        AssertSpectatorInput(hostSession.LastPlayerInput);
+    }
+
+    [Fact]
+    public async Task Shell_clears_local_input_when_local_Fighter_becomes_a_spectator()
+    {
+        var hostSession = new FakeHostLobbySession(
+            ["127.0.0.1"],
+            5000,
+            CreateValidLobbyState());
+        var networkService = new RecordingLobbyNetworkService
+        {
+            HostSession = hostSession,
+        };
+        var viewModel = new MainWindowViewModel(
+            new LocalProfileStore(CreateProfilePath()),
+            new RecordingApplicationShell(),
+            networkService,
+            new ImmediateViewDispatcher());
+
+        await viewModel.HostMatchCommand.ExecuteAsync(null);
+        await viewModel.StartMatchCommand.ExecuteAsync(null);
+        viewModel.SetMatchKeyState(MatchInputKey.MoveRight, true);
+        viewModel.SetMatchKeyState(MatchInputKey.PrimaryAttack, true);
+        Assert.True(hostSession.LastPlayerInput!.PrimaryAttack);
+
+        hostSession.PublishMatchSnapshot(viewModel.MatchSnapshot! with
+        {
+            Fighters = viewModel.MatchSnapshot.Fighters
+                .Select(fighter => fighter.ClientId == hostSession.LocalClientId
+                    ? fighter with { Health = 0 }
+                    : fighter)
+                .ToArray(),
+        });
+
+        AssertSpectatorInput(hostSession.LastPlayerInput);
+    }
+
+    [Fact]
     public async Task Shell_updates_match_hud_from_received_match_snapshot()
     {
         var hostSession = new FakeHostLobbySession(
@@ -959,6 +1028,16 @@ public sealed class MainWindowViewModelTests
             new LobbyClient(3, "Player 3", false, Team.Blue, FighterRole.Melee),
             new LobbyClient(4, "Player 4", false, Team.Blue, FighterRole.Ranged),
         ]);
+    }
+
+    private static void AssertSpectatorInput(PlayerInput? input)
+    {
+        Assert.NotNull(input);
+        Assert.Equal(GameVector.Zero, input.MoveDirection);
+        Assert.Equal(GameVector.Zero, input.AimDirection);
+        Assert.False(input.Dash);
+        Assert.False(input.PrimaryAttack);
+        Assert.False(input.RoleAbility);
     }
 
     private sealed class RecordingApplicationShell : IApplicationShell

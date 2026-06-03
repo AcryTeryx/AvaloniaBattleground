@@ -215,6 +215,44 @@ public sealed class MatchSimulationTests
     }
 
     [Fact]
+    public void Host_team_elimination_awards_round_without_completing_match()
+    {
+        var match = MatchSimulation.Start(CreateValidLobby());
+        match.OverrideFighterPositionForTesting(1, new GameVector(24, 0));
+        match.OverrideFighterPositionForTesting(2, new GameVector(32, 0));
+        match.OverrideFighterPositionForTesting(3, GameVector.Zero);
+        match.OverrideFighterPositionForTesting(4, new GameVector(180, 0));
+
+        for (var attack = 0; attack < 6; attack++)
+        {
+            UseMeleeAreaSlash(match, 3);
+            if (attack < 5)
+            {
+                AdvanceTicks(match, MatchRules.MeleeAreaSlashCooldownSeconds);
+            }
+        }
+
+        Assert.Equal(MatchPhase.RoundComplete, match.Snapshot.Phase);
+        Assert.Equal(0, match.Snapshot.RedRoundWins);
+        Assert.Equal(1, match.Snapshot.BlueRoundWins);
+        Assert.Null(match.Snapshot.MatchWinner);
+        Assert.NotNull(match.Snapshot.RoundResult);
+        Assert.Equal(Team.Blue, match.Snapshot.RoundResult!.WinningTeam);
+        Assert.All(
+            match.Snapshot.Fighters.Where(fighter => fighter.Team == Team.Red),
+            fighter => Assert.True(fighter.IsDefeated));
+
+        AdvanceTicks(match, MatchRules.RoundTransitionSeconds);
+
+        Assert.Equal(MatchPhase.InRound, match.Snapshot.Phase);
+        Assert.Equal(2, match.Snapshot.RoundNumber);
+        Assert.Equal(0, match.Snapshot.RedRoundWins);
+        Assert.Equal(1, match.Snapshot.BlueRoundWins);
+        Assert.Null(match.Snapshot.MatchWinner);
+        Assert.All(match.Snapshot.Fighters, fighter => Assert.False(fighter.IsDefeated));
+    }
+
+    [Fact]
     public void Round_timeout_awards_health_tiebreaker_to_team_with_most_combined_health()
     {
         var match = MatchSimulation.Start(CreateValidLobby());

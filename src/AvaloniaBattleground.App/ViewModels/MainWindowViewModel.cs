@@ -14,6 +14,8 @@ namespace AvaloniaBattleground.App.ViewModels;
 
 public partial class MainWindowViewModel : ViewModelBase
 {
+    private static readonly PlayerInput SpectatorInput = new(GameVector.Zero, GameVector.Zero, false);
+
     private readonly IApplicationShell _applicationShell;
     private readonly GameAudioCoordinator _audioCoordinator;
     private readonly MatchInputCollector _inputCollector = new();
@@ -540,10 +542,17 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private void ShowMatchSnapshot(MatchSnapshot snapshot)
     {
+        var wasLocalFighterActing = CanLocalFighterAct();
+
         _audioCoordinator.SwitchMusic(GameMusicTrack.Battle);
         _audioCoordinator.HandleMatchSnapshot(snapshot, _lobbySession?.LocalClientId);
         MatchSnapshot = snapshot;
         UpdateMatchHud(snapshot);
+        if (wasLocalFighterActing && !CanLocalFighterAct())
+        {
+            _ = SendSpectatorInputAsync();
+        }
+
         TransitionToScreen(AppScreen.Match);
     }
 
@@ -586,7 +595,35 @@ public partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        await _lobbySession.SendPlayerInputAsync(_inputCollector.ToPlayerInput());
+        var input = CanLocalFighterAct()
+            ? _inputCollector.ToPlayerInput()
+            : SpectatorInput;
+
+        await _lobbySession.SendPlayerInputAsync(input);
+    }
+
+    private async Task SendSpectatorInputAsync()
+    {
+        if (_lobbySession is null)
+        {
+            return;
+        }
+
+        await _lobbySession.SendPlayerInputAsync(SpectatorInput);
+    }
+
+    private bool CanLocalFighterAct()
+    {
+        if (_lobbySession is null ||
+            MatchSnapshot?.Phase != MatchPhase.InRound)
+        {
+            return false;
+        }
+
+        var localFighter = MatchSnapshot.Fighters.SingleOrDefault(fighter =>
+            fighter.ClientId == _lobbySession.LocalClientId);
+
+        return localFighter is not null && !localFighter.IsDefeated;
     }
 
     private void SetConnectionFeedback(string message)
