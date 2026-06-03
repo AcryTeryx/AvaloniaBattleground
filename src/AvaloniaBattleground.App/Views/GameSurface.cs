@@ -144,6 +144,9 @@ public sealed class GameSurface : Control
 
         switch (effect.Kind)
         {
+            case CombatEffectKind.UniversalDash:
+                context.DrawEllipse(null, RangedEffectPen, rect);
+                break;
             case CombatEffectKind.MeleeFrontalStrike:
                 context.DrawLine(
                     MeleeEffectPen,

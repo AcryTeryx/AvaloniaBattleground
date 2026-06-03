@@ -1,3 +1,4 @@
+using AvaloniaBattleground.App.Audio;
 using AvaloniaBattleground.Core;
 using AvaloniaBattleground.Networking;
 using CommunityToolkit.Mvvm.Input;
@@ -14,6 +15,7 @@ namespace AvaloniaBattleground.App.ViewModels;
 public partial class MainWindowViewModel : ViewModelBase
 {
     private readonly IApplicationShell _applicationShell;
+    private readonly IGameAudio _gameAudio;
     private readonly ILobbyNetworkService _lobbyNetworkService;
     private readonly LocalProfileStore _profileStore;
     private readonly IViewDispatcher _viewDispatcher;
@@ -58,6 +60,10 @@ public partial class MainWindowViewModel : ViewModelBase
     private EventHandler<MatchSnapshot>? _matchSnapshotChangedHandler;
     private EventHandler<LobbySnapshot>? _snapshotChangedHandler;
     private EventHandler<LobbySessionEnded>? _sessionEndedHandler;
+    private HashSet<CombatEffectAudioKey> _activeCombatEffectKeys = [];
+    private RoundResultAudioKey? _lastRoundResultAudioKey;
+    private GameMusicTrack? _currentMusicTrack;
+    private HashSet<int>? _knownLobbyClientIds;
     private string _startLockStatus = "Waiting for exactly four Clients.";
 
     public MainWindowViewModel()
@@ -65,7 +71,8 @@ public partial class MainWindowViewModel : ViewModelBase
             new LocalProfileStore(LocalProfileStore.GetDefaultProfilePath()),
             new AvaloniaApplicationShell(),
             new TcpLobbyNetworkService(),
-            new AvaloniaViewDispatcher())
+            new AvaloniaViewDispatcher(),
+            new ProceduralGameAudio())
     {
     }
 
@@ -73,12 +80,14 @@ public partial class MainWindowViewModel : ViewModelBase
         LocalProfileStore profileStore,
         IApplicationShell applicationShell,
         ILobbyNetworkService lobbyNetworkService,
-        IViewDispatcher viewDispatcher)
+        IViewDispatcher viewDispatcher,
+        IGameAudio? gameAudio = null)
     {
         _profileStore = profileStore;
         _applicationShell = applicationShell;
         _lobbyNetworkService = lobbyNetworkService;
         _viewDispatcher = viewDispatcher;
+        _gameAudio = gameAudio ?? SilentGameAudio.Instance;
 
         var profile = _profileStore.Load();
         _currentDisplayName = profile.DisplayName;
@@ -92,6 +101,8 @@ public partial class MainWindowViewModel : ViewModelBase
         StartMatchCommand = new AsyncRelayCommand(StartMatchAsync, () => CanStartMatch);
         BackToMainMenuCommand = new AsyncRelayCommand(ShowMainMenuAsync);
         ExitCommand = new RelayCommand(_applicationShell.Exit);
+
+        SwitchMusic(GameMusicTrack.Lobby);
     }
 
     public string CurrentDisplayName
@@ -447,6 +458,9 @@ public partial class MainWindowViewModel : ViewModelBase
         _matchSnapshotChangedHandler = null;
         _sessionEndedHandler = null;
         MatchSnapshot = null;
+        _activeCombatEffectKeys = [];
+        _lastRoundResultAudioKey = null;
+        _knownLobbyClientIds = null;
         UpdateMatchHud(null);
         CanStartMatch = false;
         StartLockStatus = "Waiting for exactly four Clients.";
@@ -498,6 +512,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private void ShowLobbyScreen()
     {
+        SwitchMusic(GameMusicTrack.Lobby);
         CurrentScreenTitle = "Lobby";
         IsMainMenu = false;
         IsJoinScreen = false;
@@ -516,6 +531,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private void ShowMainMenu()
     {
+        SwitchMusic(GameMusicTrack.Lobby);
         CurrentScreenTitle = "Main Menu";
         IsJoinScreen = false;
         IsLobbyScreen = false;
@@ -530,6 +546,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private void UpdateLobbyClients(LobbySnapshot snapshot)
     {
+        PlayLobbySnapshotCues(snapshot);
         LobbyClients.Clear();
 
         foreach (var client in snapshot.Clients)
@@ -559,6 +576,8 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private void ShowMatchSnapshot(MatchSnapshot snapshot)
     {
+        SwitchMusic(GameMusicTrack.Battle);
+        PlayMatchSnapshotCues(snapshot);
         MatchSnapshot = snapshot;
         UpdateMatchHud(snapshot);
         CurrentScreenTitle = "Match";
@@ -703,12 +722,144 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         ConnectionFeedback = message;
         HasConnectionFeedback = !string.IsNullOrWhiteSpace(message);
+
+        if (HasConnectionFeedback)
+        {
+            _gameAudio.PlayCue(GameAudioCue.ConnectionError);
+        }
     }
 
     private void SetSelectionFeedback(string message)
     {
         SelectionFeedback = message;
         HasSelectionFeedback = !string.IsNullOrWhiteSpace(message);
+    }
+
+    private void PlayLobbySnapshotCues(LobbySnapshot snapshot)
+    {
+        var clientIds = snapshot.Clients
+            .Select(client => client.ClientId)
+            .ToHashSet();
+
+        if (_knownLobbyClientIds is not null)
+        {
+            foreach (var clientId in clientIds.Except(_knownLobbyClientIds))
+            {
+                _gameAudio.PlayCue(GameAudioCue.LobbyClientJoined);
+            }
+
+            foreach (var clientId in _knownLobbyClientIds.Except(clientIds))
+            {
+                _gameAudio.PlayCue(GameAudioCue.LobbyClientLeft);
+            }
+        }
+
+        _knownLobbyClientIds = clientIds;
+    }
+
+    private void PlayMatchSnapshotCues(MatchSnapshot snapshot)
+    {
+        var activeEffectKeys = snapshot.Effects
+            .Select(CombatEffectAudioKey.FromEffect)
+            .ToHashSet();
+
+        foreach (var effect in snapshot.Effects)
+        {
+            var effectKey = CombatEffectAudioKey.FromEffect(effect);
+            if (_activeCombatEffectKeys.Contains(effectKey))
+            {
+                continue;
+            }
+
+            PlayCuesForEffect(snapshot, effect);
+        }
+
+        _activeCombatEffectKeys = activeEffectKeys;
+        PlayRoundResultCue(snapshot);
+    }
+
+    private void PlayCuesForEffect(MatchSnapshot snapshot, CombatEffect effect)
+    {
+        var cue = GetCueForEffect(effect);
+        if (cue is not null)
+        {
+            _gameAudio.PlayCue(cue.Value);
+        }
+
+        if (effect.Kind == CombatEffectKind.Death &&
+            IsEnemyFighter(snapshot, effect.TargetClientId))
+        {
+            _gameAudio.PlayCue(GameAudioCue.KillAnnouncement);
+        }
+    }
+
+    private static GameAudioCue? GetCueForEffect(CombatEffect effect)
+    {
+        return effect.Kind switch
+        {
+            CombatEffectKind.UniversalDash => GameAudioCue.UniversalDash,
+            CombatEffectKind.MeleeFrontalStrike => GameAudioCue.PrimaryAttack,
+            CombatEffectKind.RangedSingleArrowShot => GameAudioCue.PrimaryAttack,
+            CombatEffectKind.MeleeAreaSlash => GameAudioCue.RoleAbility,
+            CombatEffectKind.RangedConeVolley => GameAudioCue.RoleAbility,
+            CombatEffectKind.Hit => GameAudioCue.Hit,
+            CombatEffectKind.Death => GameAudioCue.FighterDefeated,
+            _ => null,
+        };
+    }
+
+    private bool IsEnemyFighter(MatchSnapshot snapshot, int? targetClientId)
+    {
+        if (targetClientId is null || _lobbySession is null)
+        {
+            return false;
+        }
+
+        var localFighter = snapshot.Fighters.SingleOrDefault(fighter =>
+            fighter.ClientId == _lobbySession.LocalClientId);
+        var targetFighter = snapshot.Fighters.SingleOrDefault(fighter =>
+            fighter.ClientId == targetClientId.Value);
+
+        return localFighter is not null &&
+            targetFighter is not null &&
+            localFighter.Team != targetFighter.Team;
+    }
+
+    private void PlayRoundResultCue(MatchSnapshot snapshot)
+    {
+        if (snapshot.RoundResult is null)
+        {
+            _lastRoundResultAudioKey = null;
+            return;
+        }
+
+        var key = RoundResultAudioKey.FromSnapshot(snapshot);
+        if (_lastRoundResultAudioKey == key)
+        {
+            return;
+        }
+
+        if (snapshot.Phase == MatchPhase.MatchComplete)
+        {
+            _gameAudio.PlayCue(GameAudioCue.MatchComplete);
+        }
+        else if (snapshot.Phase == MatchPhase.RoundComplete)
+        {
+            _gameAudio.PlayCue(GameAudioCue.RoundComplete);
+        }
+
+        _lastRoundResultAudioKey = key;
+    }
+
+    private void SwitchMusic(GameMusicTrack track)
+    {
+        if (_currentMusicTrack == track)
+        {
+            return;
+        }
+
+        _gameAudio.SwitchMusic(track);
+        _currentMusicTrack = track;
     }
 
     private static string GetStartLockStatus(LobbyStartEligibility eligibility)
@@ -730,5 +881,42 @@ public partial class MainWindowViewModel : ViewModelBase
         }
 
         return "Waiting for each Team to choose one Melee and one Ranged Fighter.";
+    }
+
+    private readonly record struct CombatEffectAudioKey(
+        CombatEffectKind Kind,
+        int? SourceClientId,
+        int? TargetClientId,
+        GameVector Position,
+        double Radius)
+    {
+        public static CombatEffectAudioKey FromEffect(CombatEffect effect)
+        {
+            return new CombatEffectAudioKey(
+                effect.Kind,
+                effect.SourceClientId,
+                effect.TargetClientId,
+                effect.Position,
+                effect.Radius);
+        }
+    }
+
+    private readonly record struct RoundResultAudioKey(
+        MatchPhase Phase,
+        Team WinningTeam,
+        RoundWinReason WinReason,
+        int RoundNumber,
+        Team? MatchWinner)
+    {
+        public static RoundResultAudioKey FromSnapshot(MatchSnapshot snapshot)
+        {
+            var roundResult = snapshot.RoundResult!;
+            return new RoundResultAudioKey(
+                snapshot.Phase,
+                roundResult.WinningTeam,
+                roundResult.WinReason,
+                roundResult.RoundNumber,
+                snapshot.MatchWinner);
+        }
     }
 }
