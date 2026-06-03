@@ -49,9 +49,9 @@ public partial class MainWindow : Window
     {
         inputKey = key switch
         {
-            Key.W => MatchInputKey.MoveUp,
+            Key.Z => MatchInputKey.MoveUp,
             Key.S => MatchInputKey.MoveDown,
-            Key.A => MatchInputKey.MoveLeft,
+            Key.Q => MatchInputKey.MoveLeft,
             Key.D => MatchInputKey.MoveRight,
             Key.Up => MatchInputKey.AimUp,
             Key.Down => MatchInputKey.AimDown,
@@ -63,7 +63,7 @@ public partial class MainWindow : Window
             _ => default,
         };
 
-        return key is Key.W or Key.S or Key.A or Key.D or
+        return key is Key.Z or Key.S or Key.Q or Key.D or
             Key.Up or Key.Down or Key.Left or Key.Right or
             Key.LeftShift or Key.Space or Key.LeftCtrl;
     }
