@@ -27,7 +27,7 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             _gameAudio = new ProceduralGameAudio();
-            desktop.MainWindow = new MainWindow
+            var mainWindow = new MainWindow
             {
                 DataContext = new MainWindowViewModel(
                     new LocalProfileStore(LocalProfileStore.GetDefaultProfilePath()),
@@ -36,6 +36,9 @@ public partial class App : Application
                     new AvaloniaViewDispatcher(),
                     _gameAudio),
             };
+
+            mainWindow.Closed += (_, _) => DisposeGameAudio();
+            desktop.MainWindow = mainWindow;
             desktop.ShutdownRequested += OnShutdownRequested;
         }
 
@@ -43,6 +46,11 @@ public partial class App : Application
     }
 
     private void OnShutdownRequested(object? sender, ShutdownRequestedEventArgs e)
+    {
+        DisposeGameAudio();
+    }
+
+    private void DisposeGameAudio()
     {
         _gameAudio?.Dispose();
         _gameAudio = null;

@@ -27,4 +27,8 @@
   <ItemGroup>
     <Content Include="Assets\Audio\*.wav" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AvaloniaBattleground.Tests" />
+  </ItemGroup>
 </Project>

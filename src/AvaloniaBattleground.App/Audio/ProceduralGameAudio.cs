@@ -12,44 +12,58 @@ public sealed class ProceduralGameAudio : IGameAudio
 {
     private static readonly TimeSpan CueThrottle = TimeSpan.FromMilliseconds(80);
 
-    private readonly ProceduralAudioAssets _assets = new();
-    private readonly PlatformAudioPlayer _player = new();
+    private readonly IGameAudioAssetCatalog _assets;
+    private readonly IGameAudioPlayer _player;
     private readonly Dictionary<GameAudioCue, DateTimeOffset> _lastCueStartedAt = [];
     private readonly CancellationTokenSource _lifetime = new();
     private readonly object _syncRoot = new();
     private CancellationTokenSource? _musicStopping;
     private GameMusicTrack? _currentMusicTrack;
+    private bool _disposed;
+
+    public ProceduralGameAudio()
+        : this(new ProceduralAudioAssets(), new PlatformAudioPlayer())
+    {
+    }
+
+    internal ProceduralGameAudio(IGameAudioAssetCatalog assets, IGameAudioPlayer player)
+    {
+        _assets = assets;
+        _player = player;
+    }
 
     public void SwitchMusic(GameMusicTrack track)
     {
+        CancellationTokenSource? previousMusicStopping;
         CancellationTokenSource musicStopping;
         string musicPath;
 
         lock (_syncRoot)
         {
-            if (_currentMusicTrack == track || _lifetime.IsCancellationRequested)
+            if (_currentMusicTrack == track || _disposed)
             {
                 return;
             }
 
-            _musicStopping?.Cancel();
-            _musicStopping?.Dispose();
+            previousMusicStopping = _musicStopping;
             _musicStopping = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
             _currentMusicTrack = track;
             musicStopping = _musicStopping;
             musicPath = _assets.GetMusicPath(track);
         }
 
-        _ = Task.Run(() => RunMusicLoopAsync(musicPath, musicStopping.Token));
+        previousMusicStopping?.Cancel();
+        _ = Task.Run(() => RunMusicLoopAsync(musicPath, musicStopping));
     }
 
     public void PlayCue(GameAudioCue cue)
     {
+        CancellationToken cancellationToken;
         string cuePath;
 
         lock (_syncRoot)
         {
-            if (_lifetime.IsCancellationRequested)
+            if (_disposed)
             {
                 return;
             }
@@ -63,41 +77,55 @@ public sealed class ProceduralGameAudio : IGameAudio
 
             _lastCueStartedAt[cue] = now;
             cuePath = _assets.GetCuePath(cue);
+            cancellationToken = _lifetime.Token;
         }
 
-        _ = Task.Run(() => _player.PlayAsync(cuePath, _lifetime.Token));
+        _ = Task.Run(() => _player.PlayAsync(cuePath, cancellationToken));
     }
 
     public void Dispose()
     {
-        _lifetime.Cancel();
-        _lifetime.Dispose();
+        CancellationTokenSource? musicStopping;
 
         lock (_syncRoot)
         {
-            _musicStopping?.Dispose();
-            _musicStopping = null;
-        }
-    }
-
-    private async Task RunMusicLoopAsync(string musicPath, CancellationToken cancellationToken)
-    {
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            await _player.PlayAsync(musicPath, cancellationToken);
-
-            try
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(60), cancellationToken);
-            }
-            catch (OperationCanceledException)
+            if (_disposed)
             {
                 return;
             }
+
+            _disposed = true;
+            musicStopping = _musicStopping;
+            _musicStopping = null;
+            _currentMusicTrack = null;
+        }
+
+        musicStopping?.Cancel();
+        _lifetime.Cancel();
+    }
+
+    private async Task RunMusicLoopAsync(string musicPath, CancellationTokenSource musicStopping)
+    {
+        try
+        {
+            var cancellationToken = musicStopping.Token;
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await _player.PlayAsync(musicPath, cancellationToken);
+
+                await Task.Delay(TimeSpan.FromMilliseconds(60), cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            musicStopping.Dispose();
         }
     }
 
-    private sealed class ProceduralAudioAssets
+    private sealed class ProceduralAudioAssets : IGameAudioAssetCatalog
     {
         private const int SampleRate = 44100;
         private readonly string _bundledDirectory;
@@ -257,13 +285,13 @@ public sealed class ProceduralGameAudio : IGameAudio
         }
     }
 
-    private sealed class PlatformAudioPlayer
+    private sealed class PlatformAudioPlayer : IGameAudioPlayer
     {
         private readonly string? _playerCommand = FindPlayerCommand();
 
         public async Task PlayAsync(string path, CancellationToken cancellationToken)
         {
-            if (_playerCommand is null)
+            if (_playerCommand is null || cancellationToken.IsCancellationRequested)
             {
                 return;
             }
@@ -274,14 +302,23 @@ public sealed class ProceduralGameAudio : IGameAudio
                 return;
             }
 
-            using var cancellation = cancellationToken.Register(() => KillProcess(process));
-
+            CancellationTokenRegistration cancellation = default;
             try
             {
+                cancellation = cancellationToken.Register(() => KillProcess(process));
                 await process.WaitForExitAsync(cancellationToken);
             }
             catch (OperationCanceledException)
             {
+                KillProcess(process);
+            }
+            catch (ObjectDisposedException)
+            {
+                KillProcess(process);
+            }
+            finally
+            {
+                cancellation.Dispose();
             }
         }
 
@@ -383,4 +420,16 @@ public sealed class ProceduralGameAudio : IGameAudio
             return null;
         }
     }
+}
+
+internal interface IGameAudioAssetCatalog
+{
+    string GetMusicPath(GameMusicTrack track);
+
+    string GetCuePath(GameAudioCue cue);
+}
+
+internal interface IGameAudioPlayer
+{
+    Task PlayAsync(string path, CancellationToken cancellationToken);
 }
