@@ -138,6 +138,7 @@ public enum ProjectileKind
 
 public enum CombatEffectKind
 {
+    UniversalDash,
     MeleeFrontalStrike,
     MeleeAreaSlash,
     RangedSingleArrowShot,
@@ -307,7 +308,7 @@ public sealed class MatchSimulation
             .Where(effect => effect.RemainingSeconds > 0)
             .ToList();
         var fighters = Snapshot.Fighters
-            .Select(TickFighterMovementAndCooldowns)
+            .Select(fighter => TickFighterMovementAndCooldowns(fighter, effects))
             .ToDictionary(fighter => fighter.ClientId);
         var projectiles = Snapshot.Projectiles.ToList();
 
@@ -422,7 +423,9 @@ public sealed class MatchSimulation
         };
     }
 
-    private FighterState TickFighterMovementAndCooldowns(FighterState fighter)
+    private FighterState TickFighterMovementAndCooldowns(
+        FighterState fighter,
+        List<CombatEffect> effects)
     {
         var input = GetInput(fighter);
         var aimDirection = input.AimDirection.Length == 0
@@ -456,6 +459,14 @@ public sealed class MatchSimulation
         {
             position += aimDirection * MatchRules.UniversalDashDistance;
             dashCooldown = MatchRules.UniversalDashCooldownSeconds;
+            effects.Add(new CombatEffect(
+                CombatEffectKind.UniversalDash,
+                fighter.Position,
+                aimDirection,
+                fighter.Team,
+                MatchRules.GetFighterRadius(fighter.Role) + 8,
+                MatchRules.CombatEffectLifetimeSeconds,
+                fighter.ClientId));
         }
 
         return fighter with

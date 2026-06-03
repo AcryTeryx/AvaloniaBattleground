@@ -69,6 +69,19 @@ public sealed class MatchSimulationTests
     }
 
     [Fact]
+    public void Universal_dash_creates_feedback_effect()
+    {
+        var match = MatchSimulation.Start(CreateValidLobby());
+
+        match.SetInput(1, new PlayerInput(GameVector.Zero, new GameVector(1, 0), true));
+        match.Tick();
+
+        Assert.Contains(match.Snapshot.Effects, effect =>
+            effect.Kind == CombatEffectKind.UniversalDash &&
+            effect.SourceClientId == 1);
+    }
+
+    [Fact]
     public void Movement_and_dash_are_clamped_to_hard_arena_boundary()
     {
         var match = MatchSimulation.Start(CreateValidLobby());
