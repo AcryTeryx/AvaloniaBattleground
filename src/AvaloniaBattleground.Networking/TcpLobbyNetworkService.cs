@@ -676,6 +676,10 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 {
                     await HandleClientDisconnectedAsync(connectedClient.ClientId);
                 }
+                catch (InvalidOperationException)
+                {
+                    await HandleClientDisconnectedAsync(connectedClient.ClientId);
+                }
             }
         }
 
@@ -710,6 +714,10 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 {
                     await HandleClientDisconnectedAsync(connectedClient.ClientId);
                 }
+                catch (InvalidOperationException)
+                {
+                    await HandleClientDisconnectedAsync(connectedClient.ClientId);
+                }
             }
         }
 
@@ -737,6 +745,9 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 {
                 }
                 catch (ObjectDisposedException)
+                {
+                }
+                catch (InvalidOperationException)
                 {
                 }
             }
@@ -820,6 +831,10 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             {
                 return CreateHostDisconnectSelectionFailure();
             }
+            catch (InvalidOperationException)
+            {
+                return CreateHostDisconnectSelectionFailure();
+            }
             finally
             {
                 _pendingSelections.TryRemove(requestId, out _);
@@ -872,6 +887,9 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             catch (ObjectDisposedException)
             {
             }
+            catch (InvalidOperationException)
+            {
+            }
         }
 
         public async Task SendPlayerInputAsync(
@@ -898,6 +916,10 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 EndSessionForHostDisconnect();
             }
             catch (ObjectDisposedException)
+            {
+                EndSessionForHostDisconnect();
+            }
+            catch (InvalidOperationException)
             {
                 EndSessionForHostDisconnect();
             }
