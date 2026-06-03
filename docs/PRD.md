@@ -2,13 +2,13 @@
 
 ## Problem Statement
 
-The project needs a clear product and implementation specification for a Windows-only 2D Arena Fighter built in C# with AvaloniaUI. The game should deliver a focused 4-player 2v2 hosted multiplayer experience without external visual assets, without central infrastructure, and without letting scope drift into matchmaking, accounts, bots, cross-platform support, or asset-heavy production.
+The project needs a clear product and implementation specification for a Windows and Linux desktop 2D Arena Fighter built in C# with AvaloniaUI. The game should deliver a focused 4-player 2v2 hosted multiplayer experience without external visual assets, without central infrastructure, and without letting scope drift into matchmaking, accounts, bots, unsupported platform targets, or asset-heavy production.
 
-The core challenge is to make a small, readable, networked combat game where four players on separate Windows machines can host, join, choose valid team roles, fight best-of-3 rounds, and understand the outcome of each round and match.
+The core challenge is to make a small, readable, networked combat game where four players on supported Windows or Linux desktop machines can host, join, choose valid team roles, fight best-of-3 rounds, and understand the outcome of each round and match.
 
 ## Solution
 
-Build Avalonia Battleground as a Windows desktop Arena Fighter with a Host-Authoritative Listen Server network model. One player hosts the Match simulation, three other Clients connect by manual IP and port, and all Clients play in a Circular Arena using Keyboard-Only Controls.
+Build Avalonia Battleground as a Windows and Linux desktop Arena Fighter with a Host-Authoritative Listen Server network model. One player hosts the Match simulation, three other Clients connect by manual IP and port, and all Clients play in a Circular Arena using Keyboard-Only Controls.
 
 Each Match contains exactly two Teams. Each Team must have one Melee Fighter and one Ranged Fighter. Players choose Team and role in the Lobby, then fight best-of-3 Rounds. Each Round lasts 90 seconds and is won by Team Elimination or, if time expires, by Health Tiebreaker.
 
@@ -16,7 +16,7 @@ The game uses Minimal Vector Combat Visuals rendered through a Custom Game Surfa
 
 ## User Stories
 
-1. As a player, I want to launch the game on Windows, so that I can play without installing a cross-platform runtime-specific client.
+1. As a player, I want to launch the game on Windows or Linux, so that I can play on a supported desktop platform.
 2. As a player, I want a main menu with Host Match, Join Match, and Exit, so that I can quickly choose how to enter the game.
 3. As a host player, I want to start a hosted Match from my machine, so that my friends can connect without a dedicated server.
 4. As a host player, I want to see the host IP address and port, so that I can share connection details with other players.
@@ -67,7 +67,7 @@ The game uses Minimal Vector Combat Visuals rendered through a Custom Game Surfa
 
 ## Implementation Decisions
 
-- Build the product as a Windows-Only Product. Linux, macOS, and future cross-platform support are out of scope.
+- Build the product as a Windows and Linux Desktop Product. macOS, mobile, WebAssembly, console, and broader platform support are out of scope.
 - Use AvaloniaUI for the desktop app shell, menus, Lobby, HUD, dialogs, overlays, and Custom Game Surface hosting.
 - Render gameplay through a Custom Game Surface rather than representing every Fighter, projectile, and attack as an independent UI control.
 - Keep the game as a Multiplayer-Only MVP. No player-facing bots, training mode, or single-player mode are included.
@@ -141,7 +141,7 @@ Modules that should receive automated tests:
 
 Recommended manual tests:
 
-- Four Windows machines on the same LAN complete a full best-of-3 Match.
+- Four supported Windows or Linux desktop machines on the same LAN complete a full best-of-3 Match.
 - Three Clients join one host by manual IP and port.
 - Invalid IP/port shows a connection error.
 - Host disconnect ends the Match for all Clients.
@@ -181,7 +181,7 @@ Rendering and audio should be covered primarily by focused manual verification a
 - Host migration.
 - Reconnection.
 - Bot replacement after disconnect.
-- Cross-platform support now or in the future.
+- macOS, mobile, WebAssembly, console, and broader platform support.
 - External visual assets, sprite sheets, texture packs, character portraits, or art packs.
 - Full announcer system or character voice-line system.
 - Final competitive balance.
@@ -190,6 +190,6 @@ Rendering and audio should be covered primarily by focused manual verification a
 
 Baseline combat values are starting points for MVP playtesting, not final balance targets. The MVP success bar is a readable, stable, playable foundation that four players can understand and enjoy enough to iterate.
 
-The PRD follows the domain glossary in CONTEXT.md and the accepted ADRs for Windows-only scope, Custom Game Surface rendering, Fixed-Tick Host Simulation, and Host-Authoritative Listen Server networking.
+The PRD follows the domain glossary in CONTEXT.md and the accepted ADRs for Windows and Linux desktop scope, Custom Game Surface rendering, Fixed-Tick Host Simulation, and Host-Authoritative Listen Server networking.
 
 Issue tracker publication is currently blocked because this workspace has no configured GitHub remote and the GitHub connector found no installed repository named AvaloniaBattleground. When a repository exists, publish this PRD as a feature issue with a priority label and keep it in Backlog or Needs review until triage produces an agent-ready implementation brief.

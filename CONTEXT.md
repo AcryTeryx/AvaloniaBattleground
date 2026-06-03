@@ -92,9 +92,9 @@ _Avoid_: Account, profile, username service
 The MVP scope where only hosted 4-player multiplayer matches are player-facing.
 _Avoid_: Bots, training mode, single-player mode
 
-**Windows-Only Product**:
-The platform scope where the game targets Windows desktop only and does not plan future cross-platform support.
-_Avoid_: Cross-platform roadmap, Linux support, macOS support
+**Windows and Linux Desktop Product**:
+The platform scope where the game targets Windows and Linux desktop as supported product platforms.
+_Avoid_: macOS support, mobile support, WebAssembly support, console support
 
 **Custom Game Surface**:
 An Avalonia custom-drawn gameplay area used to render the arena, fighters, attacks, projectiles, and combat feedback.
@@ -225,7 +225,7 @@ _Avoid_: Auto shot, basic arrow
 - The game uses the **MVP Screen Flow**
 - MVP persistence is limited to **Local Display Name**
 - The product MVP is a **Multiplayer-Only MVP**
-- The product is a **Windows-Only Product**
+- The product is a **Windows and Linux Desktop Product**
 - Gameplay is rendered through a **Custom Game Surface**
 - A **Match** uses a **Host-Authoritative Listen Server** network model
 - The host runs a **Fixed-Tick Host Simulation**
