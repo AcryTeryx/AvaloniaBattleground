@@ -58,6 +58,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
         {
             await tcpClient.ConnectAsync(hostAddress, request.Port, timeout.Token);
             var stream = tcpClient.GetStream();
+            var reader = new WireMessageReader(stream);
 
             await WriteWireMessageAsync(
                 stream,
@@ -66,7 +67,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                     LocalProfileStore.NormalizeDisplayName(request.DisplayName)),
                 timeout.Token);
 
-            var response = await ReadWireMessageAsync(stream, timeout.Token);
+            var response = await reader.ReadAsync(timeout.Token);
             if (response is null)
             {
                 tcpClient.Dispose();
@@ -95,6 +96,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
 
             var session = new ClientLobbySession(
                 tcpClient,
+                reader,
                 response.ClientId.Value,
                 new LobbySnapshot(response.Clients));
 
@@ -173,32 +175,47 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
         await stream.FlushAsync(cancellationToken);
     }
 
-    private static async Task<WireMessage?> ReadWireMessageAsync(
-        NetworkStream stream,
-        CancellationToken cancellationToken)
+    // Reads newline-delimited JSON wire messages off a single connection. The
+    // read buffer is retained between calls so bytes that arrive after a
+    // message terminator (for example, a lobby snapshot the host sends right
+    // after the join response) are not lost. One reader must be reused for the
+    // whole lifetime of a connection.
+    private sealed class WireMessageReader(NetworkStream stream)
     {
-        using var messageBuffer = new MemoryStream();
-        var buffer = new byte[1];
+        private readonly byte[] _readBuffer = new byte[4096];
+        private readonly MemoryStream _messageBuffer = new();
+        private int _bufferStart;
+        private int _bufferEnd;
 
-        while (true)
+        public async Task<WireMessage?> ReadAsync(CancellationToken cancellationToken)
         {
-            var read = await stream.ReadAsync(buffer, cancellationToken);
-            if (read == 0)
-            {
-                return messageBuffer.Length == 0
-                    ? null
-                    : throw new JsonException("Partial wire message.");
-            }
+            _messageBuffer.SetLength(0);
 
-            if (buffer[0] == '\n')
+            while (true)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                return JsonSerializer.Deserialize<WireMessage>(
-                    messageBuffer.ToArray(),
-                    JsonOptions);
-            }
+                while (_bufferStart < _bufferEnd)
+                {
+                    var current = _readBuffer[_bufferStart++];
+                    if (current == (byte)'\n')
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        return JsonSerializer.Deserialize<WireMessage>(
+                            _messageBuffer.ToArray(),
+                            JsonOptions);
+                    }
 
-            messageBuffer.WriteByte(buffer[0]);
+                    _messageBuffer.WriteByte(current);
+                }
+
+                _bufferStart = 0;
+                _bufferEnd = await stream.ReadAsync(_readBuffer, cancellationToken);
+                if (_bufferEnd == 0)
+                {
+                    return _messageBuffer.Length == 0
+                        ? null
+                        : throw new JsonException("Partial wire message.");
+                }
+            }
         }
     }
 
@@ -364,7 +381,8 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             try
             {
                 var stream = tcpClient.GetStream();
-                var request = await ReadWireMessageAsync(stream, _stopping.Token);
+                var reader = new WireMessageReader(stream);
+                var request = await reader.ReadAsync(_stopping.Token);
 
                 if (request is null || request.MessageType != WireMessageTypes.JoinRequest)
                 {
@@ -394,7 +412,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                     WireMessage.JoinAccepted(clientId, snapshot.Clients),
                     _stopping.Token);
                 await BroadcastSnapshotAsync(snapshot);
-                _ = ReadClientMessagesAsync(clientId, tcpClient);
+                _ = ReadClientMessagesAsync(clientId, tcpClient, reader);
             }
             catch (OperationCanceledException)
             {
@@ -410,7 +428,10 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             }
         }
 
-        private async Task ReadClientMessagesAsync(int clientId, TcpClient tcpClient)
+        private async Task ReadClientMessagesAsync(
+            int clientId,
+            TcpClient tcpClient,
+            WireMessageReader reader)
         {
             try
             {
@@ -418,9 +439,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
                 {
                     try
                     {
-                        var message = await ReadWireMessageAsync(
-                            tcpClient.GetStream(),
-                            _stopping.Token);
+                        var message = await reader.ReadAsync(_stopping.Token);
 
                         if (message is null)
                         {
@@ -759,14 +778,20 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
         private readonly CancellationTokenSource _stopping = new();
         private readonly ConcurrentDictionary<Guid, TaskCompletionSource<LobbySelectionResult>> _pendingSelections = new();
         private readonly TcpClient _tcpClient;
+        private readonly WireMessageReader _reader;
         private readonly SemaphoreSlim _writeLock = new(1, 1);
         private MatchSnapshot? _matchSnapshot;
         private int _sessionEnded;
         private LobbySnapshot _snapshot;
 
-        public ClientLobbySession(TcpClient tcpClient, int localClientId, LobbySnapshot initialSnapshot)
+        public ClientLobbySession(
+            TcpClient tcpClient,
+            WireMessageReader reader,
+            int localClientId,
+            LobbySnapshot initialSnapshot)
         {
             _tcpClient = tcpClient;
+            _reader = reader;
             LocalClientId = localClientId;
             _snapshot = initialSnapshot;
 
@@ -938,9 +963,7 @@ public sealed class TcpLobbyNetworkService : ILobbyNetworkService
             {
                 try
                 {
-                    var message = await ReadWireMessageAsync(
-                        _tcpClient.GetStream(),
-                        _stopping.Token);
+                    var message = await _reader.ReadAsync(_stopping.Token);
 
                     if (message is null)
                     {

@@ -92,7 +92,7 @@ public sealed class GameSurface : Control
         FighterState fighter)
     {
         var fighterCenter = ToScreenPoint(center, arenaScale, fighter.Position);
-        var fighterRadius = fighter.Role == FighterRole.Melee ? 12 : 10;
+        var fighterRadius = MatchRules.GetFighterRadius(fighter.Role);
         var fighterBrush = fighter.Team == Team.Red ? RedTeamBrush : BlueTeamBrush;
         var fighterRect = new Rect(
             fighterCenter.X - fighterRadius,
